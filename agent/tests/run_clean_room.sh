@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Prove the usage-skill works for a fresh, off-VPN user.
 #
-# Copies ONLY the public files into a throwaway temp dir (no .git, no NVIDIA
-# env, no VPN), installs deps into a fresh venv, then runs:
-#   1. offline unit smoke (pytest)        - the SDK parses/builds correctly
-#   2. clean-room end-to-end (mock server) - the documented workflows run
+# Makes a faithful copy of the whole agent/ folder into a throwaway temp dir
+# (no .git, no NVIDIA env, no VPN), installs deps into a fresh venv, then runs:
+#   1. the full pytest suite (offline smoke + full coverage + CLI + doc accuracy)
+#   2. the clean-room narrative end-to-end (mock server)
 #
 # Usage:  bash tests/run_clean_room.sh
 set -euo pipefail
@@ -22,10 +22,15 @@ if [ -z "$PY" ]; then
 fi
 echo "Clean room: $TMP  (python: $("$PY" --version 2>&1))"
 
-# Copy the public surface only - mimic a user who downloaded the release.
-cp -R "$AGENT_DIR/sil_wheel_agent" "$AGENT_DIR/tests" "$AGENT_DIR/requirements.txt" "$TMP/"
+# Faithful copy of the whole agent/ folder - mimic a user who downloaded the
+# release (SKILL.md, knowledge/, examples/ included, not just code + tests).
+DEST="$TMP/agent"
+mkdir -p "$DEST"
+cp -R "$AGENT_DIR/." "$DEST/"
+find "$DEST" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+rm -rf "$DEST/.pytest_cache" "$DEST/.venv" 2>/dev/null || true
 
-cd "$TMP"
+cd "$DEST"
 "$PY" -m venv .venv
 # shellcheck disable=SC1091
 source .venv/bin/activate
