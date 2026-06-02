@@ -15,12 +15,13 @@
 
 import asyncio
 import json
+import os
 
 import websockets
 from websockets.server import WebSocketServerProtocol
 
-WS_HOST = "0.0.0.0"
-WS_PORT = 7000
+WS_HOST = os.getenv("WHEEL_WS_HOST", "0.0.0.0")
+WS_PORT = int(os.getenv("WHEEL_WS_PORT", "7000"))
 
 connected_clients: "set[WebSocketServerProtocol]" = set()
 websocket_loop = None

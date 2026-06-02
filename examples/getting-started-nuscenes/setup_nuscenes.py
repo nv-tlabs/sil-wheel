@@ -343,7 +343,7 @@ def run_extract_cosmos(
         [
             sys.executable,
             str(WHEEL_SCRIPTS / "extract_video_text_embeddings.py"),
-            "--path_to_data", str(video_list_path),
+            str(video_list_path),
             "--model_type", model_type,
             "--process_id", "0",
             "--n_processes", "1",
@@ -383,7 +383,7 @@ def run_extract_qwen_captions(
     cmd = [
         sys.executable,
         str(WHEEL_SCRIPTS / "extract_captions.py"),
-        "--path_to_data", str(video_list_path),
+        str(video_list_path),
         "--model_size", str(model_size),
         "--prompt_factory_type", "yotta_prompt_long",
         "--clip_duration", str(clip_duration),
@@ -829,6 +829,9 @@ def write_config(
             },
             "cluster_search": {
                 "clustering_dir": str((workdir / "clustering").resolve()),
+            },
+            "clip_list_search": {
+                "clip_lists_dir": str((workdir / "clip_lists").resolve()),
             },
             "bev_store": {
                 "s3_bucket": "_local_disabled_",

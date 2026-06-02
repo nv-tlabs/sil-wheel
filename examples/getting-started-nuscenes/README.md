@@ -1,36 +1,13 @@
 # Getting Started: SIL-Wheel + nuScenes
 
 A single script that takes you from a fresh SIL-Wheel checkout to a
-fully-loaded Wheel UI on a public nuScenes split, with every retrieval
+fully-loaded SIL-Wheel UI on a public nuScenes split, with every retrieval
 modality populated.
 
 It performs the same end-to-end pipeline that SIL-Wheel's
 [docs/data-preparation.md](../../docs/data-preparation.md) describes, wired
 up for the public nuScenes mini split (10 scenes, no AWS account required)
 and serving videos straight off the local filesystem.
-
-## What the Wheel UI can do after setup
-
-| Modality | Source | Wheel store |
-| --- | --- | --- |
-| Caption full-text search | Qwen2.5-VL captions | `FTSCaptionStore` |
-| Cosmos text→video / clip→clip | `cosmos_embed1_448p` | `CosmosEmbeddingsStore` |
-| Caption-embedding semantic search | `Qwen3-Embedding-0.6B` | `CaptionEmbeddingsStore` |
-| Visual text→region search | Florence2 + SigLIP | `Florence2SigCLIPEmbeddingStore` |
-| Trajectory pattern (`hard_braking`, `stop_go`, …) | nuScenes ego_pose | `TrajectoryStore` |
-| Trajectory shape (clip→clip) | nuScenes ego_pose | `TrajectoryStore` |
-| Country / data-source filters | metadata in `annotations.db` | `SQLiteDataStore` |
-| HTTP-range video streaming | local files | `LocalFileFetcher` |
-
-The script also creates a single admin user so you can log into the UI.
-
-## What is intentionally not built
-
-* VLM Judge (needs `OPENAI_API_KEY`).
-* BEV viewer / metrics filter (no `predictions/` data populated).
-* Arena evaluation mode.
-* Classifier and cluster search (`classifiers/` and `clustering/` directories
-  remain empty; the search is lazy and just returns nothing).
 
 ## Prerequisites
 
@@ -147,7 +124,27 @@ setup_nuscenes.py
 └── write_config                     config.yaml the SIL-Wheel server reads
 ```
 
-## Layout produced
+## What you get after setup
+
+Once the script finishes you have a SIL-Wheel instance with every retrieval
+modality populated, alongside all the on-disk artifacts the server reads.
+
+### Search modalities in the UI
+
+| Modality | Source | SIL-Wheel store |
+| --- | --- | --- |
+| Caption full-text search | Qwen2.5-VL captions | `FTSCaptionStore` |
+| Cosmos text→video / clip→clip | `cosmos_embed1_448p` | `CosmosEmbeddingsStore` |
+| Caption-embedding semantic search | `Qwen3-Embedding-0.6B` | `CaptionEmbeddingsStore` |
+| Visual text→region search | Florence2 + SigLIP | `Florence2SigCLIPEmbeddingStore` |
+| Trajectory pattern (`hard_braking`, `stop_go`, …) | nuScenes ego_pose | `TrajectoryStore` |
+| Trajectory shape (clip→clip) | nuScenes ego_pose | `TrajectoryStore` |
+| Country / data-source filters | metadata in `annotations.db` | `SQLiteDataStore` |
+| HTTP-range video streaming | local files | `LocalFileFetcher` |
+
+The script also creates a single admin user so you can log into the UI.
+
+### On-disk layout
 
 ```
 wheel-data/
@@ -177,6 +174,15 @@ wheel-data/
 `classifiers/`, `clustering/`, and `bev_index/` are referenced from
 `config.yaml` but not populated; their stores are lazy and don't require the
 directories to exist.
+
+## What is intentionally not built
+
+* Perception-based search (object class / count / proximity / direction) —
+  only an empty `wm_stats.parquet` stub is written, so it returns nothing.
+* BEV viewer / metrics filter (no `predictions/` data populated).
+* Arena evaluation mode.
+* Classifier and cluster search (`classifiers/` and `clustering/` directories
+  remain empty; the search is lazy and just returns nothing).
 
 ## Troubleshooting
 
