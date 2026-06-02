@@ -1,12 +1,12 @@
-<p align="center">
-  <img src="sil_wheel/app/static/images/car.png" width="120" alt="SIL-Wheel logo" />
-</p>
-
-<h1 align="center">SIL-Wheel</h1>
+<h1 align="center">
+  <img src="sil_wheel/app/static/images/car.png" width="40" alt="SIL-Wheel logo" />
+  SIL-Wheel
+</h1>
 <p align="center"><b>A Multi-Modal Search and Curation Platform for Physical AI</b></p>
 
 [![Code License](https://img.shields.io/badge/Code%20License-Apache_2.0-green.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![Technical Report](https://img.shields.io/badge/arXiv-TBD-brightgreen.svg?style=flat-square)](https://arxiv.org/abs/)
 
 <p align="center">
   <a href="#installation">How to Install</a>
@@ -15,9 +15,7 @@
   &nbsp;✦&nbsp;
   <a href="https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/tutorials.html">Tutorials &amp; Recipes</a>
   &nbsp;✦&nbsp;
-  <a href="#citation">Paper</a>
-  &nbsp;✦&nbsp;
-  <a href="https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/contributors.html">Contributors</a>
+  <a href="#paper">Technical Report</a>
 </p>
 
 <p align="center">
@@ -111,16 +109,20 @@ client = WheelClient.from_config("config/wheel_launch_dev_server_config.yaml")
 # Single-modality search via a convenience helper.
 result = client.search_caption("hard braking at intersection")
 print(len(result), "clips matched")
-print(result.head(10))                                  # first 10 clip_ids
+# first 10 clip_ids
+print(result.head(10))
 
 # Compose multiple modalities and filters in one query, fused with RRF.
 result = client.search(
-    search="hard braking at intersection",              # caption FTS
-    semantic_search_text="hard braking at intersection",  # text->video embedding
+    # caption FTS
+    search="hard braking at intersection",
+    # text->video embedding
+    semantic_search_text="hard braking at intersection",
     data_source=["nuscenes"],
     rank_mode="rrf",
 )
-df = result.as_dataframe()                              # per-clip per-modality scores
+# per-clip per-modality scores
+df = result.as_dataframe()
 print(df.head(10))
 ```
 
@@ -224,6 +226,8 @@ In-repo references:
 | [docs/bug-reporting.md](docs/bug-reporting.md) | Google-Sheets-backed bug-report form |
 
 ## Citation
+
+If you use SIL-Wheel in your research, please cite:
 
 ```bibtex
 @misc{sil-wheel,
