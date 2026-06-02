@@ -4,9 +4,11 @@
 </h1>
 <p align="center"><b>A Multi-Modal Search and Curation Platform for Physical AI</b></p>
 
-[![Code License](https://img.shields.io/badge/Code%20License-Apache_2.0-green.svg)](LICENSE)
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
-[![Technical Report](https://img.shields.io/badge/arXiv-TBD-brightgreen.svg?style=flat-square)](https://arxiv.org/abs/)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Code%20License-Apache_2.0-green.svg" alt="Code License" /></a>
+  <a href="https://www.python.org/downloads/release/python-3120/"><img src="https://img.shields.io/badge/python-3.12-blue.svg" alt="Python 3.12" /></a>
+  <a href="https://arxiv.org/abs/"><img src="https://img.shields.io/badge/arXiv-TBD-brightgreen.svg" alt="Technical Report" /></a>
+</p>
 
 <p align="center">
   <a href="#installation">How to Install</a>
@@ -200,13 +202,14 @@ embeddings.
 
 ## QuickStart with SIL-Wheel
 
-The fastest way to see Wheel end-to-end is the **nuScenes mini**
+The fastest way to see SIL-Wheel end-to-end is the **nuScenes mini**
 walkthrough under
 [`examples/getting-started-nuscenes/`](examples/getting-started-nuscenes/).
 A single script downloads the public nuScenes mini split, runs the
 full pre-processing pipeline, builds every index, and starts a server
-with every modality populated. About **2 hours on a single 4090**, no
-AWS account required.
+with every modality populated. The 10-scene mini split processes in just
+**a few minutes on a single 4090** (plus a one-time model download on the
+first run), no AWS account required.
 
 ```bash
 python examples/getting-started-nuscenes/setup_nuscenes.py
@@ -214,16 +217,17 @@ python examples/getting-started-nuscenes/setup_nuscenes.py
 
 ## Documentation
 
-Full user and developer documentation is hosted at
-[research.nvidia.com/labs/sil/projects/sil-wheel-docs](https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/index.html).
+📚 Full user and developer documentation — guides, tutorials, and the
+complete API reference — lives on the
+**[SIL-Wheel documentation site](https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/index.html)**.
 
-In-repo references:
+For quick in-repo deep dives:
 
-| Doc | Topic |
+| Topic | Reference |
 | :--- | :--- |
-| [docs/data-preparation.md](docs/data-preparation.md) | Video processing, embeddings, metadata, and S3 upload |
-| [docs/arena.md](docs/arena.md) | Blind model evaluation, manifest format, ELO ratings |
-| [docs/bug-reporting.md](docs/bug-reporting.md) | Google-Sheets-backed bug-report form |
+| Data preparation — video processing, embeddings, metadata, S3 upload | [`docs/data-preparation.md`](docs/data-preparation.md) |
+| Arena — blind model evaluation, manifest format, ELO ratings | [`docs/arena.md`](docs/arena.md) |
+| Bug reporting — Google-Sheets-backed form | [`docs/bug-reporting.md`](docs/bug-reporting.md) |
 
 ## Citation
 

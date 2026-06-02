@@ -34,8 +34,9 @@ Run from the SIL-Wheel repository root with the `wheel` conda env active:
 # 1. Install this example's extras (nuscenes-devkit, vllm, qwen-vl-utils, …).
 pip install -r examples/getting-started-nuscenes/requirements.txt
 
-# 2. Run the full pipeline. On a single 4090 expect a couple of hours
-#    dominated by Qwen2.5-VL captioning and Florence2 visual embeddings.
+# 2. Run the full pipeline. The 10-scene mini split takes a few minutes on a
+#    4090 (plus a one-time model download on first run); larger splits take
+#    proportionally longer.
 python examples/getting-started-nuscenes/setup_nuscenes.py \
     --workdir ./wheel-data \
     --admin-password admin
