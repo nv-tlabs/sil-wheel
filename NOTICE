@@ -1,0 +1,130 @@
+# SIL-Wheel
+
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+## 1. Third-party software included in this distribution
+
+The following third-party software is bundled with this product. Each
+component is provided under its own license, reproduced below.
+
+### @msgpack/msgpack
+
+- **Project:** <https://github.com/msgpack/msgpack-javascript>
+- **License:** ISC License
+
+> Copyright (c) 2019 The msgpack-javascript Contributors
+>
+> Permission to use, copy, modify, and/or distribute this software for any
+> purpose with or without fee is hereby granted, provided that the above
+> copyright notice and this permission notice appear in all copies.
+>
+> THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+> REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+> AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+> INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+> LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+> OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+> PERFORMANCE OF THIS SOFTWARE.
+
+
+## 2. External materials retrieved at runtime
+
+This software fetches the following AI models on demand from external sources
+when the corresponding code paths are exercised. The model weights are **not**
+bundled with or redistributed by this software. Each material is governed by
+the license shown; refer to the linked source for the authoritative terms.
+
+### 2.1 Required by default code paths
+
+#### NVIDIA Cosmos-Embed1 (224p / 336p / 448p)
+
+- **License:** NVIDIA Open Model License — <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/>
+- **Source:**
+  - <https://huggingface.co/nvidia/Cosmos-Embed1-224p>
+  - <https://huggingface.co/nvidia/Cosmos-Embed1-336p>
+  - <https://huggingface.co/nvidia/Cosmos-Embed1-448p>
+
+#### Google SigLIP base-patch16-224
+
+- **License:** Apache License 2.0 — <https://www.apache.org/licenses/LICENSE-2.0>
+- **Source:** <https://huggingface.co/google/siglip-base-patch16-224>
+
+#### Qwen3-Embedding (0.6B / 8B)
+
+- **License:** Apache License 2.0 — <https://www.apache.org/licenses/LICENSE-2.0>
+- **Source:**
+  - <https://huggingface.co/Qwen/Qwen3-Embedding-0.6B>
+  - <https://huggingface.co/Qwen/Qwen3-Embedding-8B>
+
+### 2.2 Optional / opt-in
+
+#### NVIDIA Llama-3.3-Nemotron-Super-49B-v1
+
+- **License:** NVIDIA Open Model License — <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/>
+- **Additional license:** Llama 3.3 Community License Agreement — <https://www.llama.com/llama3_3/license/>
+- **Source:** <https://huggingface.co/nvidia/llama-3.3-nemotron-super-49b-v1>
+- **Note:** Accessed via NVIDIA Cloud Functions (NVCF) API; weights are **not** downloaded by this software.
+
+#### Qwen3-4B
+
+- **License:** Apache License 2.0
+- **Source:** <https://huggingface.co/Qwen/Qwen3-4B>
+
+#### Qwen3-VL-Embedding (2B / 8B)
+
+- **License:** Apache License 2.0
+- **Source:**
+  - <https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B>
+  - <https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B>
+
+#### Qwen2.5-VL-Instruct (7B / 32B / 72B)
+
+- **License:** Apache License 2.0
+- **Source:**
+  - <https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct>
+  - <https://huggingface.co/Qwen/Qwen2.5-VL-32B-Instruct>
+  - <https://huggingface.co/Qwen/Qwen2.5-VL-72B-Instruct>
+
+#### Qwen2.5-VL-3B-Instruct
+
+- **License:** Qwen RESEARCH LICENSE AGREEMENT (**non-commercial use only**) — <https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct/blob/main/LICENSE>
+- **Source:** <https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct>
+- **Note:** This variant is restricted to non-commercial research use. Use the 7B / 32B / 72B variants (Apache 2.0) for commercial workflows.
+
+#### Qwen3-VL-Instruct (2B / 4B / 8B / 30B-A3B / 235B-A22B)
+- **License:** Apache License 2.0
+- **Source:**
+  - <https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct>
+  - <https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct>
+  - <https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct>
+  - <https://huggingface.co/Qwen/Qwen3-VL-30B-A3B-Instruct>
+  - <https://huggingface.co/Qwen/Qwen3-VL-235B-A22B-Instruct>
+
+#### Microsoft Florence-2-base
+
+- **License:** MIT License — <https://opensource.org/licenses/MIT>
+- **Source:** <https://huggingface.co/microsoft/Florence-2-base>
+
+#### Meta PE-Core (B16-224 / L14-336 / G14-448)
+
+- **License:** Apache License 2.0
+- **Source:**
+  - <https://huggingface.co/facebook/PE-Core-B16-224>
+  - <https://huggingface.co/facebook/PE-Core-L14-336>
+  - <https://huggingface.co/facebook/PE-Core-G14-448>
+
+
+## 3. Disclaimer for externally retrieved materials
+
+This software automatically retrieves, accesses, or interacts with external
+materials. Those retrieved materials are not distributed with this software
+and are governed solely by separate terms, conditions, and licenses. You are
+solely responsible for finding, reviewing, and complying with all applicable
+terms, conditions, and licenses, and for verifying the security, integrity,
+and suitability of any retrieved materials for your specific use case.
+
+This software is provided "AS IS", without warranty of any kind. The author
+makes no representations or warranties regarding any retrieved materials, and
+assumes no liability for any losses, damages, liabilities, or legal
+consequences from your use or inability to use this software or any retrieved
+materials. Use this software and the retrieved materials at your own risk.
