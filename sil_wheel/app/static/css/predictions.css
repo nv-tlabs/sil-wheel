@@ -1,0 +1,256 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+body {
+    padding-top: 72px;
+}
+
+:root {
+    --media-tile-width: 640px;
+}
+
+#main-content .main-content {
+    margin: 16px auto;
+    width: min(1360px, calc(100% - 32px));
+    padding: 24px;
+    background: var(--surface);
+    border-radius: var(--r-md);
+    box-shadow: var(--sh-2);
+}
+
+footer {
+    margin-left: 0;
+}
+
+#current-page {
+    display: grid;
+    grid-template-columns: 1fr; /* single, centered video column */
+    justify-items: center;
+    gap: 24px;
+}
+
+#current-page .tile {
+    width: 100%;
+    max-width: var(--media-tile-width);
+    margin: 0 auto;
+}
+
+#current-page .tile video {
+    width: 100%;
+    height: auto;
+}
+
+/* Caption input and submit button on one line with proper sizing */
+.caption {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.caption select {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.caption .submit-caption {
+    flex: 0 0 auto;
+}
+
+/* Compact success message spacing */
+#label-success-message {
+    margin: 8px 0 0 0;
+}
+
+/* Improve small-screen behavior */
+@media (max-width: 480px) {
+    #current-page {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Keep ID row and caption icon on the same line */
+#current-page .tile > div:nth-of-type(2) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+#current-page .session-id-container {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+#current-page .caption-container {
+    display: inline-flex;
+    align-items: center;
+    padding-left: 0; /* override global left padding */
+}
+
+/* Time pill for captions inside predictions */
+.caption-time { margin-bottom: 4px; }
+.caption-time-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1f2937;
+    background: #e5e7eb;
+    border-radius: 9999px;
+}
+
+.plot-title {
+    font: 0.8em sans-serif;
+}
+
+/* Predictions grid: responsive multi-column layout */
+.predictions-grid {
+    margin: 24px auto;
+    width: min(1360px, calc(100% - 32px));
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 24px;
+    justify-content: center;
+    align-items: start;
+}
+
+.predictions-grid .tile {
+    width: var(--media-tile-width);
+}
+
+.predictions-grid .trajectory-plot {
+    width: 100%;
+    height: 380px;
+}
+
+.predictions-grid .model-name-container {
+    padding: 4px 8px;
+    text-align: center;
+}
+.predictions-grid .model-name-container p {
+    margin: 0;
+}
+
+.legend-container {
+    text-align: center;
+}
+
+
+/* Optional: collapse to one column on very narrow screens */
+@media (max-width: 1200px) {
+    .predictions-grid {
+        grid-template-columns: 1fr;
+        justify-content: center;
+    }
+    .predictions-grid .tile {
+        width: min(100%, var(--media-tile-width));
+        margin: 0 auto;
+    }
+}
+
+/* Metrics table container and column styles (mirrors leaderboard look) */
+#tab-content-container {
+    border: 1px solid #ccc;
+    border-top: none;
+    padding: 10px;
+    background-color: white;
+    /* Match width/centering of main content */
+    margin: 16px auto;
+    width: min(1360px, calc(100% - 32px));
+}
+
+/* Constrain the Model column and ellipsize long names */
+table.dataTable th.model-col,
+table.dataTable td.model-col {
+    width: 240px;
+    max-width: 240px;
+}
+table.dataTable td.model-col .model-text {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+@media (max-width: 900px) {
+    table.dataTable th.model-col,
+    table.dataTable td.model-col {
+        width: 160px;
+        max-width: 160px;
+    }
+}
+
+@media (max-width: 600px) {
+    table.dataTable th.model-col,
+    table.dataTable td.model-col {
+        width: 120px;
+        max-width: 120px;
+    }
+}
+
+.subsection-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 32px auto 16px auto;
+    text-align: center;
+    color: #333;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #76B900; /* NVIDIA green accent */
+    width: fit-content;
+}
+
+/* Metrics time series chart container */
+.metrics-timeseries-container {
+    margin: 16px auto;
+    width: min(1360px, calc(100% - 32px));
+    padding: 24px;
+    background: var(--surface, white);
+    border-radius: var(--r-md, 8px);
+    box-shadow: var(--sh-2, 0 2px 8px rgba(0,0,0,0.1));
+}
+
+#metrics-timeseries-chart {
+    width: 100%;
+    min-height: 450px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#metrics-timeseries-chart svg {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+#metrics-timeseries-chart .time-indicator {
+    opacity: 0.8;
+}
+
+#metrics-timeseries-chart .click-area:hover {
+    fill: rgba(0, 0, 0, 0.02);
+}
+
+#metrics-timeseries-chart .x-axis line,
+#metrics-timeseries-chart .y-axis line,
+#metrics-timeseries-chart .x-axis path,
+#metrics-timeseries-chart .y-axis path {
+    stroke: #666;
+}
+
+#metrics-timeseries-chart .x-axis text,
+#metrics-timeseries-chart .y-axis text {
+    fill: #333;
+    font-size: 11px;
+}

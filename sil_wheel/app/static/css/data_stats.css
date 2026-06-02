@@ -1,0 +1,294 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+body {
+    padding-top: 72px !important;
+}
+
+.main-content {
+    margin-top: 0 !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+
+    width: calc(100% - 32px) !important;
+    max-width: 2400px;
+    background: var(--surface);
+    border-radius: var(--r-md);
+    box-shadow: var(--sh-2);
+    padding: 10px;
+}
+
+/* Controls */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Unified button styling for this page */
+.controls .inline-actions button,
+.ds-toolbar button {
+    background: #ffffff;
+    color: var(--brand);
+    border: 1px solid var(--brand);
+    border-radius: var(--r-sm);
+    padding: 8px 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.controls .inline-actions button:hover,
+.ds-toolbar button:hover {
+    background: var(--brand);
+    color: #ffffff;
+    border-color: var(--brand);
+}
+
+#ds-count {
+    font-family: 'Consolas', monospace;
+    background: #e2e8f0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    color: var(--text);
+}
+
+
+#dataset-select {
+    min-width: 320px;
+    min-height: 120px;
+}
+
+.grid.two {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(520px, 1fr));
+    gap: 24px;
+}
+
+.ds-panel {
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    padding: 8px;
+}
+
+.ds-panel h3 {
+    margin: 0 0 8px 0;
+}
+
+.ds-panel h3 a.ds-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.ds-panel h3 a.ds-link:hover {
+    text-decoration: underline;
+    color: var(--brand);
+}
+
+.ds-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.image-viewer {
+    overflow: auto;
+    border-radius: 6px;
+    max-height: 42vh;
+}
+
+.image-viewer img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fff;
+    transition: transform 0.25s ease, box-shadow 0.2s ease;
+    transform-origin: center center;
+    will-change: transform;
+    cursor: zoom-in;
+}
+
+/* Click-to-zoom behavior */
+.image-viewer img.zoomed {
+    /* Layout-based zoom is controlled via width; keep transform unset for scrollbars */
+    box-shadow: 0 10px 32px rgba(0,0,0,0.22);
+    cursor: grab;
+    user-select: none;
+}
+
+.image-viewer img.zoomed.panning {
+    cursor: grabbing;
+}
+
+/* Summary tables and blocks */
+.summary {
+    margin-top: 10px;
+    display: grid;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.summary .summary-meta {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.summary .summary-block {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    background: #fff;
+}
+
+.summary .summary-block h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+}
+
+.stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.stats-table th,
+.stats-table td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--line);
+}
+
+.stats-table th {
+    color: #374151;
+    font-weight: 600;
+}
+
+.summary details {
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 8px;
+    background: #fafafa;
+}
+
+.summary details summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+/* Loader / error styles for summary */
+.summary .loading {
+    color: #6b7280;
+    font-style: italic;
+}
+
+.summary .error {
+    color: #b91c1c;
+}
+
+@media (max-width: 1200px) {
+    .grid.two {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+.container {
+    width: 95% !important; /* Fixed percentage to prevent jumping when content loads */
+    width: calc(100% - 32px);
+    max-width: 2400px;
+    margin: 0 auto !important; /* Ensure it never shifts left/right */
+    padding-top: 10px; /* Use padding for internal breathing room instead of margin */
+    clear: both;
+}
+
+#main-content .main-content > .main-content-heading {
+    margin-top: 0;
+    border-radius: 8px 8px 0 0;
+}
+
+/* Ensure favicon has no colored background */
+.main-content .home-button {
+    background: transparent;
+}
+
+.main-content .home-button img {
+    background: transparent;
+    display: block;
+}
+
+/* Zoom controls */
+.zoom-controls {
+    display: inline-flex;
+    gap: 6px;
+}
+
+/* Zoom controls inherit the unified toolbar button style */
+
+.zoom-controls .zoom-ratio {
+    margin-left: 8px;
+    color: var(--muted);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Controls: helper text and select2 sizing */
+.controls .inline-actions {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.controls .helper {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.select2-container {
+    min-width: 320px;
+}
+
+.select2-container .select2-selection--multiple {
+    min-height: 34px;
+}
+
+.panel {
+    margin-bottom: 24px;
+    padding-bottom: 0px;
+    padding: 20px;
+    background: var(--surface);
+    border-radius: var(--r-md);
+    border: 1px solid var(--line);
+}
+
+@media (max-width: 768px) {
+    .container {
+        width: calc(100% - 16px);
+        margin: 8px auto;
+    }
+    .grid.two {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    #main-content .main-content { margin: 8px auto 4px; }
+}

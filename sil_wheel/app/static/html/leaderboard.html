@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+<head>
+    <title>Leaderboard</title>
+    <meta charset="UTF-8">
+    <meta name="author" content="NVIDIA Spatial Intelligence Lab">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="//assets.adobedtm.com/5d4962a43b79/814eb6e9b4e1/launch-4bc07f1e0b0b.min.js"></script>
+    <link rel="icon" href="/favicon" />
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.3.2/css/dataTables.dataTables.css" />
+    <script src="https://cdn.datatables.net/2.3.2/js/dataTables.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="leaderboard.css">
+    <script>window.disableClusterZoom = true;</script>
+    <script src="/main.js"></script>
+    <script src="/world_model.js"></script>
+    <script src="/clustering.js"></script>
+    <script src="/leaderboard.js"></script>
+    <link rel="stylesheet" href="/docs_chatbot.css">
+    <script defer src="/docs_chatbot.js"></script>
+</head>
+<body>
+    <div class="top-navbar">
+        <div class="navbar-left">
+            <label for="project-select">Select Annotations From Projects:</label>
+            <select id="project-select" multiple="multiple"></select>
+        </div>
+        <div class="navbar-right">
+            <button class="nav-button" onclick="search()">📌 Apply Filters</button>
+            <button class="nav-button" onclick="clearSearch()">🧹 Clear Search</button>
+            <a href="/#page=0" class="nav-button">🔍 Go To Search</a>
+            <a href="/arena" class="nav-button">⚔️ Arena</a>
+            <button class="nav-button" id="logout-btn" title="Logout">🚪 Logout</button>
+        </div>
+    </div>
+    <div id="main-row">
+        <div class="sidebar">
+            <h2 class="sidebar-heading">Search Panel</h2>
+
+            <div class="filters" id="filters">
+                <div class="filter-group">
+                    <div class="filter-group-title">Agentic Search</div>
+                    <div class="filter-button-row">
+                        <button class="classifier-button" onclick="openAgentSetupModal()"> 🤖 Use an Agent </button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <div class="filter-group-title">Action Controls</div>
+                    <div class="filter-button-row">
+                        <button class="metrics-panel" onclick="toggleEvaluationPanel(this)">
+                            📊 Metrics & Evaluation
+                        </button>
+                    </div>
+                    <div class="filter-label-row">
+                        <label for="leaderboard-select">Leaderboard:</label>
+                        <select id="leaderboard-select"></select>
+                    </div>
+                    <div class="filter-label-row">
+                        <label for="models-select">Models:</label>
+                        <select id="models-select" multiple="multiple"></select>
+                    </div>
+                    <div class="filter-checkbox-row">
+                        <label class="switch" for="with-same-clips">
+                            <input type="checkbox" id="with-same-clips" />
+                            <span class="slider round"></span>
+                        </label>
+                        <label>Evaluate on same clips</label>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <div class="filter-group-title">Basic Search</div>
+                    <div class="filter-label-row">
+                        <label for="data-source">Dataset:</label>
+                        <select id="data-source" multiple="multiple"></select>
+                    </div>
+                    <div id="data-source-mode-row" style="display:none;">
+                        <button type="button" class="fmb active" data-value="any">OR</button>
+                        <button type="button" class="fmb" data-value="all">AND</button>
+                    </div>
+
+                    <div class="filter-label-row">
+                        <label>Label:</label>
+                        <select id="annotation-tag" multiple="multiple">
+                        </select>
+                    </div>
+                    <div id="filter-mode-row" style="display:none;">
+                        <button type="button" class="fmb active" data-value="any">OR</button>
+                        <button type="button" class="fmb" data-value="all">AND</button>
+                    </div>
+
+                    <div class="filter-label-row">
+                        <label for="labels-to-exclude-choices">Exclude Labels:</label>
+                        <select id="labels-to-exclude-choices" multiple="multiple">
+                        </select>
+                    </div>
+                    <div id="labels-to-exclude-mode-row" style="display:none;">
+                        <button type="button" class="fmb active" data-value="any">OR</button>
+                        <button type="button" class="fmb" data-value="all">AND</button>
+                    </div>
+
+                    <div class="filter-label-row">
+                        <label for="search-clipid">Clip ID:</label>
+                        <input type="text" id="search-clipid" placeholder="clip ID..." />
+                    </div>
+
+                    <div class="filter-group-collapsable">
+                        <div class="filter-button-row">
+                            <button class="gray-button" onclick="toggleAnnotationFilterMenu()" aria-controls="clip-label-group" aria-expanded="false">Additional Filters</button>
+                        </div>
+
+                        <div class="filter-group" id="clip-label-group">
+                            <div class="filter-label-row">
+                                <label for="search-country">Country:</label>
+                                <input type="text" id="search-country" placeholder="e.g. US or DE" />
+                            </div>
+                            <div class="filter-label-row">
+                                <label for="label-types">Annotation Types:</label>
+                                <select id="label-types" multiple="multiple"></select>
+                            </div>
+
+                            <div class="filter-label-row">
+                                <label for="metric-names">Metrics:</label>
+                                <select id="metric-names" multiple="multiple"></select>
+                                <div id="metric-ranges"></div>
+                            </div>
+
+                            <div class="filter-checkbox-row">
+                                <label class="switch">
+                                  <input type="checkbox" id="with-times" onchange="normalizeTimesFilter(this)">
+                                  <span class="slider round"></span>
+                                </label>
+                                <label for="with-times">With Times</label>
+                            </div>
+                          
+                            <div class="filter-checkbox-row">
+                                <label class="switch">
+                                  <input type="checkbox" id="without-times" onchange="normalizeTimesFilter(this)">
+                                  <span class="slider round"></span>
+                                </label>
+                                <label for="without-times">Without Times</label>
+                            </div>
+
+                            <div class="filter-checkbox-row">
+                                <label class="switch">
+                                <input type="checkbox" id="without-ann" onchange="search()">
+                                <span class="slider round"></span>
+                              </label>
+                              <label for="without-ann">Without Annotations</label>
+                            </div>
+
+                            <div class="filter-checkbox-row">
+                                <label class="switch">
+                                    <input type="checkbox" id="with-ego-data" />
+                                    <span class="slider round"></span>
+                                </label>
+                                <label>Has Ego Trajectory</label>
+                            </div>
+
+
+                            <div class="filter-checkbox-row">
+                                <label class="switch">
+                                  <input type="checkbox" id="left-hand-driving">
+                                  <span class="slider round"></span>
+                                </label>
+                                <label for="left-hand-driving">Left-hand Driving</label>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="filter-group">
+                    <div class="filter-group-title">Advanced Search</div>
+
+                    <div class="filter-group-collapsable">
+                        <div class="filter-button-row">
+                            <button class="gray-button" onclick="toggleCaptionSearchMenu()">Caption Search</button>
+                        </div>
+
+                        <div class="filter-group" id="caption-search-filters-group">
+                            <div class="filter-label-row">
+                                <label for="search-term">Caption Substring Search:
+                                <button class="help-icon" onclick="showCaptionSearchHelp()">i</button>
+                                </label>
+                                <div class="rewrite-input-row">
+                                    <input type="text" id="search-term" placeholder="e.g. turn" oninput="syncRewriteBtn('caption')" />
+                                    <button class="rewrite-link-btn" id="caption-rewrite-btn" onclick="rewriteQuery('caption')" style="display:none;" disabled>Rewrite</button>
+                                </div>
+                            </div>
+                            <div id="caption-rewrite-info" class="query-rewrite-info" style="display:none;">
+                                <span class="query-rewrite-label">Include in search:</span>
+                                <div id="caption-rewrite-tags" class="query-rewrite-tags"></div>
+                                <button class="rewrite-clear-btn" onclick="clearRewritesAndSearch('caption')" title="Clear rewrites">×</button>
+                            </div>
+                            <div class="filter-label-row">
+                                <label for="caption-embed-search-text">Caption Semantic Search:
+                                <button class="help-icon" onclick="showCaptionEmbedSearchHelp()">i</button>
+                                </label>
+                                <div class="rewrite-input-row">
+                                    <input type="text" id="caption-embed-search-text" placeholder="e.g. rainy highway at night" oninput="syncRewriteBtn('caption-embed')" />
+                                    <button class="rewrite-link-btn" id="caption-embed-rewrite-btn" onclick="rewriteQuery('caption-embed')" style="display:none;" disabled>Rewrite</button>
+                                </div>
+                            </div>
+                            <div id="caption-embed-rewrite-info" class="query-rewrite-info" style="display:none;">
+                                <span class="query-rewrite-label">Include in search:</span>
+                                <div id="caption-embed-rewrite-tags" class="query-rewrite-tags"></div>
+                                <button class="rewrite-clear-btn" onclick="clearRewritesAndSearch('caption-embed')" title="Clear rewrites">×</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="filter-group-collapsable">
+                        <div class="filter-button-row">
+                            <button class="gray-button" onclick="toggleVisualSearchMenu()">Visual Search</button>
+                        </div>
+
+                        <div class="filter-group" id="visual-search-filters-group">
+                            <div class="filter-label-row">
+                                <label for="semantic-search-text">Text-to-Video Search:
+                                <button class="help-icon" onclick="showSemanticSearchHelp()">i</button>
+                                </label>
+                                <div class="rewrite-input-row">
+                                    <input type="text" id="semantic-search-text" placeholder="e.g. highway" oninput="syncRewriteBtn('semantic')" />
+                                    <button class="rewrite-link-btn" id="semantic-rewrite-btn" onclick="rewriteQuery('semantic')" style="display:none;" disabled>Rewrite</button>
+                                </div>
+                            </div>
+                            <div id="semantic-rewrite-info" class="query-rewrite-info" style="display:none;">
+                                <span class="query-rewrite-label">Include in search:</span>
+                                <div id="semantic-rewrite-tags" class="query-rewrite-tags"></div>
+                                <button class="rewrite-clear-btn" onclick="clearRewritesAndSearch('semantic')" title="Clear rewrites">×</button>
+                            </div>
+                            <div class="filter-label-row">
+                                <label for="semantic-search-clipid">Video-to-Video Search:
+                                <button class="help-icon" onclick="showVideoToVideoSearchHelp()">i</button>
+                                </label>
+                                <input type="text" id="semantic-search-clipid" placeholder="clip ID..." />
+                            </div>
+
+                            <div class="filter-label-row">
+                                <label for="visual-search-text">Text-to-Image Search:
+                                <button class="help-icon" onclick="showVisualSearchHelp()">i</button>
+                                </label>
+                                <div class="rewrite-input-row">
+                                    <input type="text" id="visual-search-text" placeholder="e.g. school zone sign" oninput="syncRewriteBtn('visual')" />
+                                    <button class="rewrite-link-btn" id="visual-rewrite-btn" onclick="rewriteQuery('visual')" style="display:none;" disabled>Rewrite</button>
+                                </div>
+                            </div>
+                            <div id="visual-rewrite-info" class="query-rewrite-info" style="display:none;">
+                                <span class="query-rewrite-label">Include in search:</span>
+                                <div id="visual-rewrite-tags" class="query-rewrite-tags"></div>
+                                <button class="rewrite-clear-btn" onclick="clearRewritesAndSearch('visual')" title="Clear rewrites">×</button>
+                            </div>
+                            <div class="filter-label-row">
+                                <label for="visual-search-image">Image-to-Video Search:</label>
+                                <button class="help-icon" onclick="showVisualSearchImageHelp()">i</button>
+                                <input type="file" id="visual-search-image" accept="image/*" onchange="uploadImageAndSearch()" />
+                            </div>
+
+                            <div class="filter-label-row" style="display:none">
+                                <label for="search-comment-term">Search in Comments:
+                                <button class="help-icon" onclick="showCommentSearchHelp()">i</button>
+                                </label><input type="text" id="search-comment-term" placeholder="e.g. bad driving" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="filter-group-collapsable">
+                        <div class="filter-button-row">
+                            <button class="gray-button" onclick="toggleTrajectorySearchMenu()"> Trajectory Search</button>
+                        </div>
+                        <div class="filter-group" id="trajectory-search-filters">
+                            <div class="filter-label-row">
+                                <label for="speed-search-term">Search Trajectory:
+                                <button class="help-icon" onclick="showSpeedSearchHelp()">i</button>
+                                </label><input type="text" id="speed-search-term" placeholder="e.g. any(curvature>0.3)"/>
+                            </div>
+                            <div class="filter-label-row">
+                                <label for="trajectory-pattern">Trajectory Pattern:</label>
+                                <select id="trajectory-pattern" >
+                                    <option value="">-- Select pattern --</option>
+                                    <option value="moving_ego">Moving Ego Vehicle</option>
+                                    <option value="high_curvature">High Curvature</option>
+                                    <option value="stop_go">Stop and Go</option>
+                                    <option value="hard_braking">Hard Braking</option>
+                                    <option value="prolonged_stop">Prolonged Stop</option>
+                                    <option value="idle_to_cruise">Idle to Cruise</option>
+                                    <option value="high_speed_swerve">High Speed Swerve</option>
+                                </select>
+                            </div>
+                            <div class="filter-label-row">
+                                <label for="trajectory-shape-clipid">Trajectory-to-Trajectory:
+                                    <button class="help-icon" onclick="showTrajectoryShapeSearchHelp()">i</button>
+                                </label>
+                                <input type="text" id="trajectory-shape-clipid" placeholder="clip ID..." />
+                            </div>
+                            <div class="filter-label-row">
+                                <div class="range_container">
+                                    <div class="sliders_control">
+                                        <input type="range" id="trajectory-shape-start-t" value="0" step="1" min="0" max="20" oninput="updateTrajectoryShapeStartTimeValue(this.value)"/>
+                                        <input type="range" id="trajectory-shape-end-t" value="20" step="1" min="0" max="20" oninput="updateTrajectoryShapeEndTimeValue(this.value)"/>
+                                    </div>
+                                </div>
+                                <div class="trajectory-shape-range-values">
+                                    Range:
+                                    <span id="trajectory-shape-start-t-value">0 s</span>
+                                    &nbsp;-&nbsp;
+                                    <span id="trajectory-shape-end-t-value">20 s</span>
+                                </div>
+                            </div>
+                            <div class="filter-label-row" id="trajectory-time-reset">
+                                <button class="filter-button"  onclick="resetTrajectoryTime()">Reset times</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="filter-button-row">
+                        <button class="wm-button-search" onclick="toggleWMFilterMenu(this)">
+                            🌎 Perception-based Search
+                        </button>
+                    </div>
+                    <div class="filter-button-row">
+                        <button class="autolabel-button" id="clip-list-tools-btn"
+                            onclick="showClipListModal()">📋 Clip List Search</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <div class="filter-group-title">ML Tools</div>
+                    <div class="filter-button-row">
+                        <button id="classifier-tools-btn" class="classifier-button" onclick="toggleClassifierMenu(this)"> ⚖️  Classifier Tools </button>
+                    </div>
+                    <div class="filter-button-row">
+                        <button id="clustering-tools-btn" class="classifier-button" onclick="toggleClusteringMenu(this)">
+                            🔵 Clustering Tools
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <h2 class="main-content-heading">
+                <div>
+                    <button class="home-button" title="Go to First Page" aria-label="Home">
+                        <img src="/favicon" width="64" />
+                    </button>
+                </div>
+                <div>
+                    <div>
+                        SIL-Wheel: Search, Evaluate, and Improve Model Performance
+                    </div>
+                </div>
+            </h2>
+
+            <div class="classifier-container" id="classifier-container" style="display: none;">
+                <div class="filter-group-title">
+                    Classifier Tools
+                    <button class="help-icon" onclick="showClassifierMenuHelp()">i</button>
+                </div>
+
+                <div class="classifier-options">
+                    <div class="classifier-filters">
+                        <div class="filter-label-row">
+                            <label>Embeddings:</label>
+                            <select id="classifier-embed-type">
+                                <option value="cosmos">Text-to-Video Embeddings - Cosmos-Embed-1</option>
+                                <option value="caption">Caption Embeddings - Qwen3-Embedding-8B</option>
+                                <option value="visual">Visual Embeddings - Florence2 SigCLIP</option>
+                            </select>
+                        </div>
+                        <div class="filter-label-row">
+                            <label>Positive Labels:</label>
+                            <select id="classifier-label" multiple></select>
+                        </div>
+                        <div class="filter-label-row" id="negative-labels-choices">
+                            <label for="negative-labels">Negative Labels:</label>
+                            <select id="negative-labels" multiple="multiple" disabled></select>
+                        </div>
+                    </div>
+
+                    <div class="classifier-actions">
+                        <div class="training" id="training">
+                            <div class="filter-group-title classifier-subsection-title">Training</div>
+                            <div id="num-negative-samples">
+                                <label for="negative-samples">Negative Samples:</label>
+                                <input type="number" id="negative-samples" value="100" step="1" min="1" disabled />
+                            </div>
+                            <div id="train-set">
+                                <label for="train-with-autolabel">Train with autolabeled data:</label>
+                                <input type="checkbox" id="train-with-autolabel" name="train-with-autolabel" disabled>
+                            </div>
+                            <div id="positive-samples">
+                                <label for="positive-samples-input">Positive Samples:</label>
+                                <input type="number" id="positive-samples-input" step="1" min="1" disabled />
+                                <span id="positive-samples-max"></span>
+                            </div>
+                            <div class="filter-button-row classifier-training-actions">
+                                <button id="train-classifier-button" class="btn" disabled onclick="trainClassifier();">Train
+                                    Classifier</button>
+                            </div>
+                        </div>
+
+                        <div class="inference" id="inference">
+                            <div class="filter-group-title classifier-subsection-title">Inference</div>
+                            <div id="prob-thres">
+                                <label>Probability Expression:</label>
+                                <div id="prob-thres-controls">
+                                    <input type="text" id="probability-expression"
+                                        placeholder="e.g. p &gt; 0.95 or 0.3 &lt; p &lt; 0.7" disabled />
+                                </div>
+                            </div>
+                            <div class="filter-button-row classifier-inference-actions">
+                                <button id="use-classifier-button" class="btn" disabled onclick="useClassifier();">Use
+                                    Classifier</button>
+                                <button id="export-classifier-button" class="btn" disabled
+                                    onclick="exportClassifier();">Export Classifier</button>
+                            </div>
+                            <div class="filter-button-row classifier-inference-actions">
+                                <button id="view-positive-clips-button" class="btn" disabled
+                                    onclick="viewClassifierTrainingClips('positive');">View Positives</button>
+                                <button id="view-negative-clips-button" class="btn" disabled
+                                    onclick="viewClassifierTrainingClips('negative');">View Negatives</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="classifier-runs-section">
+                        <label for="classifier-runs-select">Trained Runs:</label>
+                        <select id="classifier-runs-select" size="4"></select>
+                        <div class="filter-button-row classifier-runs-actions">
+                            <button class="btn" id="delete-classifier-run-button"
+                                onclick="deleteClassifierRun()" disabled>Delete Run</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="wm-search-container" id="wm-search-container" style="display: none;">
+                <div class="filter-group-title">Perception-based Search
+                    <button class="help-icon" onclick="showWMSearchHelp()">i</button>
+                </div>
+                <div class="filter-label-row">
+                    <label for="wm-class-name">Object Label:</label>
+                    <select id="wm-class-name" onchange="toggleWMSearchButton()">
+                        <option value="">-- Select object label --</option>
+                        <option value="VEHICLE_CAR">Car</option>
+                        <option value="VEHICLE_TRUCK">Truck</option>
+                        <option value="VEHICLE_BUS">Bus</option>
+                        <option value="BIKE_WITH_RIDER">Bike w/ Rider</option>
+                        <!-- <option value="BIKE_TRICYCLE">Tricycle</option> -->
+                        <option value="PEDESTRIAN_UNKNOWN">Pedestrian</option>
+                    </select>
+                </div>
+                <div class="filter-group-title">By count:</div>
+                <div class="filter-label-row">
+                    <div style="display: flex; gap: 10px; width: 100%;">
+                        <div style="flex: 1;">
+                            <label for="wm-min-count">Min Count:</label>
+                            <input type="number" id="wm-min-count" value="1" step="1" min="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 0.95em; box-sizing: border-box;" />
+                        </div>
+                        <div style="flex: 1;">
+                            <label for="wm-max-count">Max Count:</label>
+                            <input type="number" id="wm-max-count" value="500" step="1" min="1" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 0.95em; box-sizing: border-box;" />
+                        </div>
+                    </div>
+                </div>
+                <div class="filter-group-title">By location:</div>
+                <div class="filter-label-row">
+                    <label for="wm-angle-range">Object location (relative to ego):</label>
+                    <div class="filter-label-row angle-selector-row">
+                        <div class="angle-selector-container">
+                          <svg id="angle-selector-svg" width="240" height="240" viewBox="0 0 240 240" style="display:block;margin:auto;"></svg>
+                          <select id="wm-angle-range" multiple style="display:none">
+                              <option value="FRONT">Front</option>
+                              <option value="FRONT_LEFT">Front Left</option>
+                              <option value="BACK_LEFT">Back Left</option>
+                              <option value="BACK">Back</option>
+                              <option value="BACK_RIGHT">Back Right</option>
+                              <option value="FRONT_RIGHT">Front Right</option>
+                          </select>
+                          <div class="car-icon-centered">🚗</div>
+                        </div>
+                        <div class="angle-selector-info">
+                            <span style="font-size:13px; color:#6b7280; margin-bottom:8px;">Click sections to select/deselect.</span>
+                            <span style="font-size:15px; color:#222;"><b>Selected:</b> <span id="selected-angles">None</span></span>
+                        </div>
+                    </div>
+                </div>  
+                <div class="filter-label-row">
+                    <label for="wm-max-dist">Within (distance in meters): <span id="wm-max-dist-value">10</span>m</label>
+                    <input type="range" id="wm-max-dist" value="10" step="0.5" min="1" max="50" oninput="updateWMDistanceValue(this.value)"/>
+                </div>
+                <div class="filter-label-row">
+                    <label for="wm-min-time">For at least (time in seconds): <span id="wm-min-time-value">0</span>s</label>
+                    <input type="range" id="wm-min-time" value="0" step="0.5" min="0" max="20" oninput="updateWMTimeValue(this.value)"/>
+                </div>
+                <div class="filter-button-row">
+                    <button class="filter-button" id="apply-wm-search-button" onclick="search()" disabled> 🔍 Apply Perception-based Search</button>
+                </div>
+            </div>
+
+            <div class="clustering-container" id="clustering-container" style="display: none;">
+                <div class="filter-group-title">
+                    Clustering Tools
+                    <button class="help-icon" onclick="showClusteringHelp()">i</button>
+                </div>
+
+                <!-- Config form -->
+                <div class="clustering-config" id="clustering-config">
+                    <div class="filter-label-row">
+                        <label>Embeddings:</label>
+                        <select id="cluster-embed-type">
+                            <option value="cosmos">Text-to-Video Embeddings - Cosmos-Embed-1</option>
+                            <option value="caption">Caption Embeddings - Qwen3-Embedding-8B</option>
+                            <option value="visual">Visual Embeddings - Florence2 SigCLIP</option>
+                        </select>
+                    </div>
+                    <div class="clustering-params-row">
+                        <div class="clustering-param">
+                            <label>Clusters:</label>
+                            <input type="number" id="cluster-n-clusters" value="20" min="2" max="20000" step="1"/>
+                        </div>
+                        <div class="clustering-param">
+                            <label>Max pts/centroid:</label>
+                            <input type="number" id="cluster-max-points-per-centroid" value="256" min="1" max="5000" step="1"/>
+                        </div>
+                    </div>
+                    <div class="filter-label-row">
+                        <label>Spherical K-Means:</label>
+                        <input type="checkbox" id="cluster-spherical"/>
+                    </div>
+                    <div class="filter-button-row">
+                        <button class="btn" id="run-clustering-button" disabled data-locked="true">
+                            Run Clustering on Current Search
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Past runs -->
+                <div class="filter-group-title" id="clustering-runs-title">Runs</div>
+                <select id="clustering-runs-select" size="4"></select>
+                <div class="filter-button-row clustering-runs-actions">
+                    <button class="btn" id="view-clustering-run-button" onclick="viewSelectedClusteringRun()" disabled>View Selected Run</button>
+                    <button class="btn" id="delete-clustering-run-button" onclick="deleteClusteringRun()" disabled>Delete Run</button>
+                </div>
+
+                <!-- Results view (hidden until a run is selected) -->
+                <div id="clustering-results-view">
+                    <div id="clustering-breadcrumb"></div>
+                    <div id="clustering-run-banner" class="clustering-run-banner"></div>
+                    <p id="clustering-subset-warning" style="display:none;" class="form-warning"></p>
+                    <div id="cluster-info-panel">
+                        <span id="cluster-info-text"></span>
+                        <div id="cluster-keywords" style="display:none;"></div>
+                        <div class="cluster-info-actions">
+                            <button class="btn" id="zoom-into-cluster-button"
+                                onclick="zoomIntoSelectedCluster()">Zoom in →</button>
+                            <button class="btn" id="add-nearest-clusters-button"
+                                title="Add the 5 nearest clusters to the selection"
+                                onclick="addNearestClusters()">+ similar clusters</button>
+                        </div>
+                    </div>
+                    <div id="cluster-distance-section">
+                        <div class="select-mode-tabs">
+                            <span class="select-mode-label">Select clips by:</span>
+                            <button class="select-mode-tab active" id="cluster-select-tab-range"
+                                onclick="setClusterSelectMode('range')">Percentile range</button>
+                            <button class="select-mode-tab" id="cluster-select-tab-box"
+                                onclick="setClusterSelectMode('box')">Box select</button>
+                        </div>
+                        <div class="cluster-distance-range-values">
+                            Range:
+                            <span id="cluster-distance-min-value">0</span>%
+                            &nbsp;-&nbsp;
+                            <span id="cluster-distance-max-value">100</span>%
+                        </div>
+                        <div id="cluster-select-range-pane">
+                            <div class="filter-label-row" id="cluster-distance-row">
+                                <label>Distance percentile:</label>
+                                <button class="btn" type="button" onclick="toggleClusterDistanceOutliers()"
+                                        title="Swap range to its complement (closest ↔ farthest)">⇄ Invert</button>
+                            </div>
+                            <div class="range_container">
+                                <div class="sliders_control">
+                                    <input type="range" id="cluster-distance-min" min="0" max="100" step="1" value="0"
+                                           oninput="updateClusterDistanceMinValue(this.value)"
+                                           onchange="commitClusterDistanceRange()" />
+                                    <input type="range" id="cluster-distance-max" min="0" max="100" step="1" value="100"
+                                           oninput="updateClusterDistanceMaxValue(this.value)"
+                                           onchange="commitClusterDistanceRange()" />
+                                </div>
+                            </div>
+                        </div>
+                        <div id="cluster-select-box-pane" style="display:none;">
+                            <p class="select-mode-hint">Click and drag on the beeswarm to pick a distance range.</p>
+                        </div>
+                    </div>
+                    <p id="umap-click-hint">Click a cluster on the UMAP plot to select its clips.</p>
+                    <div class="umap-canvas-wrap">
+                        <canvas id="umap-canvas"></canvas>
+                    </div>
+                    <div class="filter-label-row" id="umap-goto-row">
+                        <label for="umap-goto-input">Go to cluster:</label>
+                        <input type="number" id="umap-goto-input" min="0" step="1" placeholder="ID"
+                            onkeydown="if(event.key==='Enter') umapGotoCluster()" />
+                        <button class="btn" onclick="umapGotoCluster()">Go</button>
+                    </div>
+                    <div id="closest-clusters-section">
+                        <div class="closest-clusters-input-row">
+                            <label for="closest-clusters-input">Top clusters for:</label>
+                            <button class="help-icon" onclick="showClosestClustersHelp()">i</button>
+                            <input type="text" id="closest-clusters-input" placeholder="e.g. pedestrian crossing"
+                                onkeydown="if(event.key==='Enter') findClosestClusters()" />
+                            <button class="btn" onclick="findClosestClusters()">Search</button>
+                            <button class="btn closest-clusters-clear-btn"
+                                onclick="clearClosestClusters()" title="Clear">×</button>
+                        </div>
+                        <div id="closest-clusters-results" style="display:none;">
+                            <div class="closest-clusters-header"
+                                onclick="toggleClosestClustersList()">
+                                <span class="closest-clusters-toggle">▼</span>
+                                <span id="closest-clusters-summary"></span>
+                            </div>
+                            <div id="closest-clusters-list"></div>
+                        </div>
+                    </div>
+                    <div class="filter-button-row clustering-results-actions">
+                        <button class="btn" onclick="closeClusteringResults()">← Back to Runs</button>
+                        <button class="btn" onclick="downloadUMAPPlot()">Download UMAP (PNG)</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="evaluation-container" id="evaluation-container" style="display: none;">
+                <div class="filter-group-title">Evaluation Panel</div>
+                    <div class="reduction" id="reducton">
+                        <label for="reduction-method">Metric Reduction:</label>
+                        <select id="reduction-method" onchange="onReductionChange()">
+                            <option value="">Select reduction...</option>
+                            <option value="mean">Mean</option>
+                            <option value="median">Median</option>
+                            <option value="percentile_90">90th Percentile</option>
+                            <option value="percentile_95">95th Percentile</option>
+                            <option value="max">Worst (Max)</option>
+                        </select>
+                   </div>
+            </div>
+
+            <div class="contextual-filters-container" id="contextual-filters-container">
+                <div id="wm-search" class="filter-display-container">
+                    <label>With Perception-based Search</label>
+                    <span class="clear-annotation-button" onclick="resetWMSearch()">&times;</span>
+                </div>
+                <div id="caption-search" class="filter-display-container">
+                    <label>With Caption Substring Search</label>
+                    <span class="clear-annotation-button" onclick="resetCaptionSearch()">&times;</span>
+                </div>
+                <div id="caption-embed-search-display" class="filter-display-container">
+                    <label>With Caption Semantic Search</label>
+                    <span class="clear-annotation-button" onclick="resetCaptionEmbedSearch()">&times;</span>
+                </div>
+
+                <div id="trajectory-shape-search" class="filter-display-container">
+                    <label>With Trajectory Shape Search</label>
+                    <span class="clear-annotation-button" onclick="resetTrajectorySearch()">&times;</span>
+                </div>
+
+                <div id="semantic-search-text-display" class="filter-display-container">
+                    <label>With Text-to-Video Search</label>
+                    <span class="clear-annotation-button" onclick="resetSemanticSearchText()">&times;</span>
+                </div>
+                <div id="semantic-search-video-display" class="filter-display-container">
+                    <label>With Video-to-Video Search</label>
+                    <span class="clear-annotation-button" onclick="resetSemanticSearchVideo()">&times;</span>
+                </div>
+
+                <div id="visual-search-text-display" class="filter-display-container">
+                    <label>With Text-to-Image Search</label>
+                    <span class="clear-annotation-button" onclick="resetVisualSearchText()">&times;</span>
+                </div>
+                <div id="visual-search-image-display" class="filter-display-container">
+                    <label>With Image-to-Video Search</label>
+                    <span class="clear-annotation-button" onclick="resetVisualSearchImage()">&times;</span>
+                </div>
+
+                <div id="classifier-search" class="filter-display-container">
+                    <label>With Classifier Search</label>
+                    <span class="clear-annotation-button" onclick="resetClassifierSearch()">&times;</span>
+                </div>
+
+                <div id="cluster-search" class="filter-display-container">
+                    <label>Cluster Search</label>
+                    <span class="clear-annotation-button" onclick="resetClusterSearch()">&times;</span>
+                </div>
+
+                <div id="clip-list-search" class="filter-display-container">
+                    <label>Clip List Search</label>
+                    <span class="clear-annotation-button" onclick="resetClipListSearch()">&times;</span>
+                </div>
+
+                <div id="rrf-toggle-container" class="filter-display-container">
+                    <label for="rrf-toggle-checkbox">Reciprocal Rank Fusion</label>
+                    <label class="switch">
+                        <input type="checkbox" id="rrf-toggle-checkbox">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="row" id="current-page"></div>
+            <div id="tab-container">
+              <div id="active-leaderboard-pill">
+                <div>
+                    <span>Active Leaderboard:</span>
+                    <button class="filter-button"></button>
+                </div>
+              </div>
+              <ul id="search-tabs" class="tab-list">
+                <li id="add-tab-item" class="tab-entry add">
+                  <button id="add-tab-btn" class="add-tab-btn" title="Add Tab" aria-label="Add Tab">+</button>
+                </li>
+              </ul>
+            </div>
+            <div id="tab-content-container"></div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Developed and maintained by the <a href="https://research.nvidia.com/labs/toronto-ai/" style="color: #76B900;"> NVIDIA Spatial Intelligence Lab.</a></p>
+        <div class="footer-actions">
+            <button class="bug-report-btn" onclick="openBugReportModal()">🐛 Bug Report</button>
+            <button class="bug-report-btn" onclick="openContactModal()">📬 Contact</button>
+            <a href="https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/index.html#" class="bug-report-btn" target="_blank" rel="noopener noreferrer">📖 Documentation</a>
+        </div>
+    </footer>
+
+    <div class="modal-overlay" id="bug-report-overlay" onclick="closeBugReportModal()" style="display:none;"></div>
+    <div class="help-box" id="bug-report-modal" style="display:none; max-width:480px;">
+        <span class="clear-annotation-button" onclick="closeBugReportModal()">&times;</span>
+        <h3>Report a Bug</h3>
+        <div class="filter-label-row">
+            <label>Title</label>
+            <input type="text" id="bug-report-title" placeholder="Short summary..." style="width:100%;"/>
+        </div>
+        <div class="filter-label-row">
+            <label>Description</label>
+            <textarea id="bug-report-description" rows="5" placeholder="Steps to reproduce, expected vs actual behaviour..." style="width:100%;"></textarea>
+        </div>
+        <button class="filter-button" onclick="submitBugReport()">Submit</button>
+        <div id="bug-report-feedback"></div>
+    </div>
+
+    <div id="clip-list-modal" class="help-box clip-list-modal">
+        <h3>Search by Clip List
+            <button class="help-icon" onclick="showClipListHelp()">i</button>
+        </h3>
+        <input type="file" id="clip-list-file" accept=".json"
+            onchange="onClipListFileChange()" />
+        <button class="filter-button" id="clip-list-upload-button"
+            onclick="uploadClipListAndSearch()" disabled>Upload file</button>
+        <div id="clip-list-feedback" class="clip-list-modal-feedback"></div>
+        <span class="clear-annotation-button"
+            onclick="hideClipListModal()">&times;</span>
+    </div>
+
+    <div id="clip-list-help-content" class="help-box">
+        <h3>Clip List Search Help:</h3>
+        <p>
+            Filter search results to a specific set of clip IDs. Your file
+            must be a <code>.json</code> file containing a JSON array of
+            strings:
+        </p>
+        <pre>
+            ["clip_id_1", "clip_id_2", "clip_id_3"]
+        </pre>
+        <p>
+            ... or a JSON object with a <code>clip_ids</code> key:
+        </p>
+        <pre>
+            {"clip_ids": ["clip_id_1", "clip_id_2", ...]}
+        </pre>
+        <p>
+            The list is stored once on the server under a content-addressed
+            hash. Re-uploading the same content returns the same hash, so
+            the URL stays small regardless of list size and the filter is
+            shareable across users.
+        </p>
+        <span class="clear-annotation-button" onclick="hideClipListHelp()">&times;</span>
+    </div>
+
+    <div id="speed-search-help-content" class="help-box">
+        <h3>Trajectory Search Help:</h3>
+        <p>
+            The trajectory search consists of writing a valid python expression
+            that evaluates to True or False for each video. You have the
+            following variables available to use:
+        <p>
+        <ol>
+            <li><b>speed</b>: A numpy array with the instantaneous speed per video frame in meters per second</li>
+            <li><b>speed_kph</b>: The same as speed but in kph</li>
+            <li><b>acceleration</b>: A numpy array with the instantaneous acceleration per video frame in m/s^2</li>
+            <li><b>curvature</b>: A numpy array with the instantaneous 2D (on x-y) curvature per video frame in m^-1</li>
+            <li><b>jerk</b>: A numpy array with the instantaneous jerk (derivative of acceleration) per video frame in m/s^3</li>
+        </ol>
+        <p>
+        In addition you also have the following <b>functions/objects</b>:
+        </p>
+        <ol>
+            <li><b>np</b>: The top level numpy module</li>
+            <li><b>mean</b>: Maps to <em>np.mean</em></li>
+            <li><b>sum</b>: Maps to <em>np.sum</em></li>
+            <li><b>min</b>: Maps to <em>np.min</em></li>
+            <li><b>max</b>: Maps to <em>np.max</em></li>
+            <li><b>all</b>: Maps to <em>np.all</em></li>
+            <li><b>any</b>: Maps to <em>np.any</em></li>
+            <li><b>len</b>: Maps to <em>len</em></li>
+        </ol>
+        <h4>Example searches: </h4>
+        <ol>
+            <li><b>mean(speed_kph) > 10</b>: The average speed of the vehicle is more than 10 km/h</li>
+            <li><b>any(speed == 0) and any(speed > 10)</b>: The vehicle is both stopped and moving in the video</li>
+            <li><b>sum(curvature > 0.1) > 10</b>: The video has more than 10 frames with curvature larger than 0.1</li>
+            <li><b>sum(np.logical_and(speed_kph > 20, curvature > 0.1)) > 10</b>: The video has more than 10 frames where the speed is <em>simultaneously</em> more than 20 km/h and the curvature larger than 0.1</li>
+             <li><b>sum(speed < 0.5) > 150</b>: Prolonged Stop</li>
+        </ol>
+        <span class="clear-annotation-button" onclick="hideSpeedSearchHelp()">&times;</span>
+    </div>
+
+    <div id="trajectory-shape-search-help-content" class="help-box">
+        <h3>Trajectory-to-Trajectory Search Help:</h3>
+        <p>
+            Trajectory-to-Trajectory Search retrieves clips whose ego
+            trajectory shape is similar to a given clip. Paste a clip ID;
+            the system extracts that clip's trajectory shape and ranks all
+            other clips by similarity. Useful for finding more clips with
+            the same maneuver — e.g. a sharp lane change, a long stop, or
+            an arcing turn.
+        </p>
+        <p>
+            <b>Range:</b> the dual slider (default 0–20 s) selects a
+            sub-segment of the source clip's trajectory to use as the
+            query. The window's duration also picks the retrieval
+            granularity:
+        </p>
+        <ul>
+            <li>≤ 6 s → short-shape index — best for brief maneuvers (e.g. a single lane change)</li>
+            <li>≤ 15 s → medium-shape index</li>
+            <li>&gt; 15 s (default) → full-trajectory index</li>
+        </ul>
+        <span class="clear-annotation-button" onclick="hideTrajectoryShapeSearchHelp()">&times;</span>
+    </div>
+
+    <div id="caption-search-help-content" class="help-box">
+        <h3>Caption Substring Search Help:</h3>
+        <p>
+            Caption Substring Search enables you to find specific words or
+            phrases within video captions. For each video, the search returns
+            True if the specified term or pattern is found, and False otherwise.
+            When a match is found, the corresponding word or pattern is
+            highlighted in yellow within the caption for easy identification.
+        </p>
+        <p>The following query forms are supported:</p>
+        <ul>
+            <li><b>Single terms:</b> A bare word like <code>crosswalk</code> matches clips whose captions contain that exact token.</li>
+            <li><b>Quoted phrases:</b> Wrapping terms in double quotes, e.g. <code>"heavy rain"</code>, matches clips whose captions contain that exact phrase in that order.</li>
+            <li><b>Unquoted multi-word input:</b> Consecutive unquoted words are automatically treated as a quoted phrase — <code>heavy rain</code> is equivalent to <code>"heavy rain"</code>. Hyphens are replaced with spaces before this step, so <code>stop-sign</code> is treated as <code>"stop sign"</code>.</li>
+            <li><b>Boolean operators:</b> <code>AND</code>, <code>OR</code>, and <code>NOT</code> are supported. For example, <code>crosswalk AND rain</code> returns clips whose captions mention both, while <code>rain NOT highway</code> excludes clips that mention highways.</li>
+        </ul>
+        <p>
+            <b>Rewrite:</b> Click the Rewrite button to expand your query into
+            related variants using an LLM (e.g., "nudge" → "swerve", "lateral
+            shift", "veering"). Results from all variants are combined to
+            improve recall. Uncheck any tag to exclude it from the search.
+        </p>
+        <span class="clear-annotation-button" onclick="hideCaptionSearchHelp()">&times;</span>
+    </div>
+
+    <div id="caption-embed-search-help-content" class="help-box">
+        <h3>Caption Semantic Search Help:</h3>
+        <p>
+            Caption Semantic Search retrieves clips whose captions are semantically
+            similar to your query. The query is encoded with the same model used
+            to embed the captions, and the closest matches are ranked by cosine similarity.
+            Unlike keyword-based caption substring search, this finds clips by meaning even when
+            the exact words are not present in the captions.
+        </p>
+        <p>
+            <b>Rewrite:</b> Click the Rewrite button to generate semantically
+            related query variants via an LLM. Results from all variants are
+            union-ed, keeping the highest similarity score per clip.
+        </p>
+        <span class="clear-annotation-button" onclick="hideCaptionEmbedSearchHelp()">&times;</span>
+    </div>
+
+    <div id="semantic-search-help-content" class="help-box">
+        <h3>Text-to-Video Search Help:</h3>
+        <p>
+            Text-to-Video Search allows users to retrieve relevant
+            video clips by entering free-form text queries (e.g., "highway
+            driving" or "pedestrian crossing"). The system uses text-to-video
+            embedding similarity to match the query against precomputed video
+            representations, enabling intuitive and flexible search based on
+            meaning rather than exact keywords. This functionality supports
+            both descriptive phrases and single-word prompts.
+        </p>
+        <p>
+            <b>Rewrite:</b> Click the Rewrite button to generate semantically
+            related query variants via an LLM. Results from all variants are
+            union-ed, keeping the highest similarity score per clip.
+        </p>
+        <span class="clear-annotation-button" onclick="hideSemanticSearchHelp()">&times;</span>
+    </div>
+
+    <div id="video-to-video-search-help-content" class="help-box">
+        <h3>Video-to-Video Search Help:</h3>
+        <p>
+            Video-to-Video Search retrieves clips that are visually and
+            semantically similar to a given clip. Paste a clip ID; the
+            system encodes that clip with the same Cosmos-Embed-1 model
+            used by Text-to-Video Search and ranks all other clips by
+            cosine similarity against it. Useful for finding more clips
+            like one that already caught your eye.
+        </p>
+        <span class="clear-annotation-button" onclick="hideVideoToVideoSearchHelp()">&times;</span>
+    </div>
+
+    <div id="visual-search-image-help-content" class="help-box">
+        <h3>Image-to-Video Search Help:</h3>
+        <p>
+            Upload an image to search for visually similar video clips. The
+            image is encoded with a SigLIP image encoder and matched by
+            cosine similarity against precomputed embeddings of sampled video
+            frames and Florence2-detected regions. Each clip's score is the
+            highest similarity across all of its frames and regions. The
+            uploaded image is stored for the current session and reused
+            until a new image is uploaded or the search is cleared.
+        </p>
+        <span class="clear-annotation-button" onclick="hideVisualSearchImageHelp()">&times;</span>
+    </div>
+
+    <div id="visual-search-help-content" class="help-box">
+        <h3>Text-to-Image Search Help:</h3>
+        <p>
+            Text-to-Image Search retrieves video clips from free-form text queries
+            using SigLIP, an image-text contrastive model. Each clip is
+            represented by SigLIP embeddings of sampled frames and regions
+            detected by Florence2; the query text is encoded into the same
+            embedding space and matched by cosine similarity. The highest
+            similarity across all frames and regions of a clip is kept as
+            that clip's score, enabling semantic search grounded in visual
+            content even when exact keywords or labels are missing.
+        </p>
+        <p>
+            <b>Rewrite:</b> Click the Rewrite button to generate visually
+            related query variants via an LLM (e.g., "school zone sign" →
+            "speed limit sign", "crosswalk ahead sign", "children crossing
+            sign"). Results from all variants are union-ed, keeping the
+            highest similarity score per clip.
+        </p>
+        <span class="clear-annotation-button" onclick="hideVisualSearchHelp()">&times;</span>
+    </div>
+
+    <div id="comment-search-help-content" class="help-box">
+        <h3>Comment Search Help:</h3>
+        <p>
+            The comment search feature enables you to find specific words or
+            regular expression (regex) patterns within the comments provided by the users.
+            The search returns True if the specified term or pattern is
+            found, and False otherwise. When a match is found, the
+            corresponding word or pattern is highlighted in yellow within the
+            caption for easy identification.
+        <p>
+        <span class="clear-annotation-button" onclick="hideCommentSearchHelp()">&times;</span>
+    </div>
+
+    <div id="wm-search-help-content" class="help-box">
+        <h3>Perception-based Search Help:</h3>
+        <p>
+            Perception-based Search allows you to find video clips based on in-car perception and spatial relationships to the ego vehicle
+            of a particular object class. Select the object class from the dropdown menu and then choose a search type.
+        </p>
+        <h4>Search Types:</h4>
+        <ol>
+            <li><b>By Count:</b> Find clips containing at least N instances of a specific object type</li>
+            <li><b>By Range Query:</b> Find clips with objects in specific directions relative to the ego vehicle, within a certain distance, for a minimum duration</li>
+        </ol>
+        <h4>Direction Selector:</h4>
+        <p>
+            The circular diagram shows 6 regions around the ego vehicle. Click on sections to select/deselect directions where objects should be detected.
+        </p>
+        <span class="clear-annotation-button" onclick="hideWMSearchHelp()">&times;</span>
+    </div>
+
+    <div id="closest-clusters-help-content" class="help-box">
+        <h3>Top Clusters For:</h3>
+        <p>
+            The query is encoded with the same model the run was clustered on
+            (Cosmos / Caption / Visual, per the run's <em>Embeddings</em> setting),
+            then ranked against each cluster's <strong>centroid</strong>, not
+            against individual clip embeddings as the other text searches do.
+            That's what makes this a cluster-level search rather than a clip-level one.
+        </p>
+        <span class="clear-annotation-button" onclick="hideClosestClustersHelp()">&times;</span>
+    </div>
+
+    <div id="clustering-help-content" class="help-box">
+        <h3>Clustering Tools Help:</h3>
+        <p>K-Means on the current search results. Runs in the background; the run list refreshes on completion.</p>
+
+        <h4>Configuring a run</h4>
+        <ul>
+            <li><strong>Clusters:</strong> Number of K-Means clusters. UI runs are capped at 20 000 clusters / 5 000 000 input clips. For bigger sets, cluster offline via <code>examples/cluster_from_search.py</code> and upload.</li>
+            <li><strong>Spherical K-Means:</strong> Normalise vectors first (cosine similarity).</li>
+            <li><strong>Max pts/centroid:</strong> FAISS training cap — at most <em>clusters × this</em> points. Higher = better quality, slower (default 256).</li>
+        </ul>
+
+        <h4>Browsing a run</h4>
+        <p>Click <em>View Selected Run</em>. Each clip card shows <em>Show Cluster N (d=…)</em> — small d = central, large = outlier. Drill into a cluster by clicking a UMAP centroid, clicking <em>Show Cluster N</em> on a card, or using <em>Top clusters for:</em> below.</p>
+
+        <h4>Top clusters for…</h4>
+        <p>Returns <em>clusters</em> ranked by L2 distance from your query to each centroid (encoded with the run's embedding model). Different from caption/semantic/visual search, which return clips. Rows show cluster size + topic keywords; click to drill in.</p>
+
+        <p><em>Delete Run</em> removes a run entirely. Older runs without persisted centroids return empty for <em>Top clusters for…</em>.</p>
+
+        <span class="clear-annotation-button" onclick="hideClusteringHelp()">&times;</span>
+    </div>
+
+
+
+    <div id="classifier-menu-help-content" class="help-box">
+        <h3>Classifier Tools Help:</h3>
+        <p>
+            Use this to run a previously trained binary classifier on a specific label. Select the embedding type that matches the one used during training.
+            Whenever a classifier is trained and ready to use the <code>Use Classifier</code> button should be enabled.
+        </p>
+        <p><strong>Embeddings:</strong> Select the embedding type that matches the classifier you want to use. Text-to-Video uses Cosmos-Embed-1; Caption uses Qwen3-Embedding-8B; Visual uses Florence2 SigCLIP.</p>
+        <p><strong>Probability Threshold:</strong> Filter clips by predicted score using <code>&gt;</code> (most confident positives) or <code>&lt;</code> (most confident negatives) and a value between 0 and 1. Click <code>Use Classifier</code> to apply.</p>
+        <p><strong>Export Classifier:</strong> Downloads the trained classifier weights as a <code>.pkl</code> file containing a logistic regression model. You can apply it offline by computing embeddings for new clips and calling <code>model.predict_proba(embeddings)</code>.</p>
+        <span class="clear-annotation-button" onclick="hideClassifierMenuHelp()">&times;</span>
+    </div>
+
+
+    <div id="loading-block">
+        <div class="grid-loader">
+            <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+            <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+            <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+        </div>
+        <div id="loading-message">Loading...</div>
+        <div id="loading-elapsed"></div>
+    </div>
+
+</body>
+</html>

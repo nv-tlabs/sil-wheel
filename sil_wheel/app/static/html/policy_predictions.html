@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+<head>
+    <title>Policy Predictions</title>
+    <meta charset="UTF-8">
+    <meta name="author" content="NVIDIA Spatial Intelligence Lab">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="//assets.adobedtm.com/5d4962a43b79/814eb6e9b4e1/launch-4bc07f1e0b0b.min.js"></script>
+    <link rel="icon" href="/favicon" />
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.3.2/css/dataTables.dataTables.css" />
+    <script src="https://cdn.datatables.net/2.3.2/js/dataTables.js"></script>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/predictions.css">
+    <link rel="stylesheet" href="/docs_chatbot.css">
+    <script src="/main.js"></script>
+    <script src="/predictions.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+    <script defer src="/docs_chatbot.js"></script>
+</head>
+<body>
+    <div class="top-navbar">
+        <div class="navbar-left">
+            <label for="project-select">Select Annotations From Projects:</label>
+            <select id="project-select" multiple="multiple"></select>
+            <label for="save-project-name">Save to:</label>
+            <input type="text" id="save-project-name" class="project-input" placeholder="e.g. My Cool Project"/>
+        </div>
+        <div class="navbar-right">
+            <button class="nav-button" onclick="search()" aria-controls="current-page">📌 Apply Project</button>
+            <a href="/#page=0" class="nav-button">🔍 Go To Search</a>
+            <button class="nav-button" id="logout-btn" title="Logout">🚪 Logout</button>
+        </div>
+    </div>
+    <main id="main-content" role="main">
+        <div id="label-success-message"
+            style="display:none; color:green; font-weight:bold; padding:10px; text-align:center;">
+        </div>
+        <div class="main-content">
+            <h2 class="main-content-heading">
+                <div>
+                    <button class="home-button" onclick="goToFirstPage()" title="Go to First Page" aria-label="Home">
+                        <img src="/favicon" width="64" />
+                    </button>
+                </div>
+                <div>
+                    <div>
+                        SIL-Wheel: Search, Annotate, and Auto‑Tag Driving Videos
+                    </div>
+                    <div class="page-info">
+                        <div>
+                            <strong><span id="annotations-count">0</span></strong> total annotations (
+                            <strong>🔧 <span id="manual-annotations-count">0</span></strong> -
+                            <strong>🎯 <span id="autolabel-annotations-count">0</span></strong> )
+                        </div>
+                    </div>
+                </div>
+            </h2>
+        </div>
+
+        <div class="row" id="current-page"></div>
+
+        <h3 class="subsection-title" id="metrics-timeseries-heading" style="display:none">Metrics Over Time</h3>
+        <div id="metrics-timeseries-container" class="metrics-timeseries-container" style="display:none">
+            <div id="metrics-timeseries-chart"></div>
+        </div>
+
+        <h3 class="subsection-title">Metrics</h3>
+        <div id="tab-content-container"></div>
+
+        <h3 class="subsection-title">Model Predictions</h3>
+        <div id="predictions-grid" class="predictions-grid"></div>
+    </main>
+
+        <footer>
+            <p>Developed and maintained by the <a href="https://research.nvidia.com/labs/toronto-ai/" style="color: #76B900;"> NVIDIA Spatial Intelligence Lab.</a></p>
+        </footer>
+
+        <div id="tile-template" class="tile" style="display: none;">
+            <div class="video-wrapper">
+                <video controls controlsList="noplaybackrate noremoteplayback" disablePictureInPicture muted loop autoplay> <source src="" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                <div class="data-source-container"></div>
+            </div>
+            <div>
+                <div class="session-id-container">
+                    <p><strong>ID:  </strong><span></span></p>
+                </div>
+                <div class="caption-container">
+                    <button class="caption-button">📝</button>
+                    <div class="caption-box">
+                        <span class="caption-text"></span>
+                        <span class="clear-annotation-button">&times;</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="video-controls">
+                <button class="play-pause-btn">Pause</button>
+                <input type="range" class="video-slider" value="0" min="0" step="0.01">
+                <span class="current-time">00:00</span> / <span class="duration">00:00</span>
+                <div>
+                    <button class="start-log-btn" disabled>Start Annotation</button>
+                    <button class="end-log-btn" disabled>End Annotation</button>
+                </div>
+            </div>
+
+            <div class="annotations">
+            </div>
+            <div class="caption">
+                <select>
+                </select>
+                <button class="submit-caption" onclick="submitCaption(this)">Submit</button>
+            </div>
+        </div>
+        <div id="predictions-tile-template" class="tile" style="display: none;">
+            <div>
+                <div class="model-name-container">
+                    <p><strong>Model predictions  </strong><span></span></p>
+                </div>
+                <div class="legend-container">
+                </div>
+            </div>
+        </div>
+
+        <div id="project-to-write-help" class="help-box" style="display:none;">
+            <h3>Project Not Specified</h3>
+            <p>
+                You are attempting to update or add an annotation, but no project has been selected in the 
+                <strong>“Save to”</strong> field in the navigation bar.
+            </p>
+            <p>
+                Please select or enter the name of the project where you want these changes to be saved, then try again.
+            </p>
+            <span class="clear-annotation-button" onclick="hideProjectToWriteHelp()">&times;</span>
+        </div>
+
+        <div id="loading-block">
+            <div class="grid-loader">
+                <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+                <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+                <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+            </div>
+            <div id="loading-message">Loading...</div>
+            <div id="loading-elapsed"></div>
+        </div>
+
+</body>
+</html>

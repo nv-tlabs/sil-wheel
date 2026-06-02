@@ -1,0 +1,270 @@
+/*
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+*/
+
+/* SIL-Wheel onboarding chatbot widget. Scoped under .dca- to avoid
+ * colliding with existing wheel UI styles. */
+
+.dca-launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 9000;
+  background: var(--brand, #76B900);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.dca-launcher:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.dca-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  height: 560px;
+  max-height: calc(100vh - 40px);
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 9001;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: var(--text, #1a202c);
+}
+.dca-panel.dca-open {
+  display: flex;
+}
+
+.dca-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(90deg, var(--brand, #76B900), var(--brand-600, #4E7E00));
+  color: #fff;
+  font-weight: 600;
+}
+.dca-title {
+  font-size: 14px;
+}
+.dca-close {
+  background: transparent;
+  color: #fff;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 6px;
+}
+
+.dca-status {
+  font-size: 12px;
+  padding: 6px 14px;
+  background: #f1f5f9;
+  color: #475569;
+  border-bottom: 1px solid var(--line, #e2e8f0);
+}
+.dca-status code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.dca-status-ok {
+  background: #ecfdf5;
+  color: #047857;
+}
+.dca-status-err {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.dca-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg, #f4f7f6);
+}
+
+.dca-msg {
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+}
+.dca-msg-user {
+  align-items: flex-end;
+}
+.dca-msg-assistant {
+  align-items: flex-start;
+}
+.dca-msg-body {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  line-height: 1.45;
+  font-size: 14px;
+  word-wrap: break-word;
+}
+.dca-msg-user .dca-msg-body {
+  background: var(--primary, #007bff);
+  color: #fff;
+}
+.dca-msg-assistant .dca-msg-body {
+  background: #fff;
+  color: var(--text, #1a202c);
+  border: 1px solid var(--line, #e2e8f0);
+}
+.dca-msg-body code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12.5px;
+}
+/* Tighten browser defaults so rendered markdown sits nicely inside the
+ * chat bubble. First and last block lose their margins so the bubble's
+ * own padding is the only outer spacing. */
+.dca-msg-body p,
+.dca-msg-body ul,
+.dca-msg-body ol,
+.dca-msg-body h1,
+.dca-msg-body h2,
+.dca-msg-body h3,
+.dca-msg-body h4,
+.dca-msg-body h5,
+.dca-msg-body h6 {
+  margin: 6px 0;
+}
+.dca-msg-body > :first-child { margin-top: 0; }
+.dca-msg-body > :last-child  { margin-bottom: 0; }
+.dca-msg-body ul,
+.dca-msg-body ol {
+  padding-left: 22px;
+}
+.dca-msg-body li { margin: 2px 0; }
+.dca-msg-body h1 { font-size: 16px; font-weight: 600; }
+.dca-msg-body h2 { font-size: 15px; font-weight: 600; }
+.dca-msg-body h3,
+.dca-msg-body h4,
+.dca-msg-body h5,
+.dca-msg-body h6 { font-size: 14px; font-weight: 600; }
+.dca-msg-body a {
+  color: var(--brand-600, #4E7E00);
+  text-decoration: underline;
+  word-break: break-word;
+}
+.dca-msg-user .dca-msg-body code {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.dca-code {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12.5px;
+}
+.dca-citations {
+  font-size: 11.5px;
+  color: var(--muted, #4a5568);
+  margin-top: 4px;
+  padding-left: 4px;
+}
+.dca-citations code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.dca-typing .dca-msg-body {
+  font-style: italic;
+  color: var(--muted, #4a5568);
+}
+
+.dca-composer {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--line, #e2e8f0);
+  background: #fff;
+}
+.dca-input {
+  flex: 1 1 auto;
+  resize: none;
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text, #1a202c);
+}
+.dca-input:focus {
+  outline: none;
+  border-color: var(--brand, #76B900);
+  box-shadow: 0 0 0 2px rgba(118, 185, 0, 0.15);
+}
+.dca-send {
+  background: var(--brand, #76B900);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dca-send:disabled {
+  background: #a7c66f;
+  cursor: not-allowed;
+}
+.dca-mic {
+  display: none;
+  background: #fff;
+  color: var(--text, #1a202c);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dca-mic:hover {
+  border-color: var(--brand, #76B900);
+}
+.dca-mic.dca-mic-recording {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+  animation: dca-mic-pulse 1.2s ease-in-out infinite;
+}
+.dca-mic:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@keyframes dca-mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@media (max-width: 480px) {
+  .dca-panel {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    height: 70vh;
+  }
+}

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="//assets.adobedtm.com/5d4962a43b79/814eb6e9b4e1/launch-4bc07f1e0b0b.min.js"></script>
+  <title>Login</title>
+  <link rel="icon" href="/favicon" />
+  <link rel="stylesheet" href="/login.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Welcome</h1>
+    <div class="tabs">
+      <button id="tab-login" class="tab active">Login</button>
+      <button id="tab-request" class="tab">Request Access</button>
+    </div>
+
+    <div id="login-pane" class="pane active">
+      <form id="login-form">
+        <label>Username
+          <input type="text" id="login-username" required />
+        </label>
+        <label>Password
+          <input type="password" id="login-password" required />
+        </label>
+        <button type="submit">Login</button>
+      </form>
+      <p id="login-message" class="message"></p>
+    </div>
+
+    <div id="request-pane" class="pane">
+      <form id="request-form">
+        <label>Username
+          <input type="text" id="request-username" required />
+        </label>
+        <label>Password
+          <input type="password" id="request-password" required />
+        </label>
+        <label>Email
+          <input type="email" id="request-email" required pattern="^[^@\s]+@nvidia\.com$" title="Please use your @nvidia.com email" />
+        </label>
+        <label>Reason
+          <textarea id="request-reason" rows="4" placeholder="Briefly describe why you need access" required></textarea>
+        </label>
+        <button type="submit">Request Access</button>
+      </form>
+      <p id="request-message" class="message"></p>
+    </div>
+  </div>
+
+  <script src="/login.js"></script>
+  <script>
+    // Redirect if already logged in
+    fetch('/whoami').then(r => r.ok ? r.json() : Promise.reject()).then(j => {
+      if (j && j.authenticated) {
+        window.location.replace('/');
+      }
+    }).catch(() => {});
+  </script>
+  <footer>
+    <p>Developed and maintained by the <a href="https://research.nvidia.com/labs/toronto-ai/" style="color: #76B900;"> NVIDIA Spatial Intelligence Lab.</a></p>
+  </footer>
+</body>
+</html>

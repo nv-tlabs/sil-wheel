@@ -1,0 +1,89 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+@import url('/login.css');
+
+:root {
+  --accent: #76B900; /* NVIDIA Green */
+  --panel: #ffffff;
+  --text: #1a202c;
+  --muted: #4a5568;
+  --line: #e2e8f0;
+}
+
+.container { max-width: 1280px; width: 100%; margin: 0 auto; padding: 8px 12px; }
+header { display:flex; align-items:center; gap:12px; margin-bottom: 10px; }
+.spacer { flex:1; }
+.panel { background: var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; margin-top:12px; }
+h2 { margin: 0 0 10px; font-size: 18px; }
+h3 { margin: 10px 0; font-size: 16px; }
+.grid.two { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+.grid.one { display:grid; grid-template-columns: 1fr; gap:14px; }
+table { width:100%; border-collapse: collapse; }
+th, td { text-align:left; padding:8px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--text); }
+td input[type="email"], td input[type="password"], td select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Make datasource column roomy */
+#users-table th:nth-child(4),
+#users-table td:nth-child(4) { width: 340px; }
+
+/* Form layout under Access Requests */
+form#create-user-form label { display:block; margin: 8px 0; }
+form#create-user-form input, form#create-user-form select { width: 100%; box-sizing: border-box; }
+
+/* Keep action buttons on a single line and give the column room */
+#users-table th:last-child,
+#users-table td:last-child { white-space: nowrap; width: 180px; }
+#users-table td:last-child button { display: inline-block; margin-left: 8px; }
+thead th { color:#374151; font-weight:600; }
+button { background: var(--accent); color:#ffffff; border:none; border-radius:8px; padding:6px 10px; cursor:pointer; font-weight: 600; }
+select { background:#ffffff; color: var(--text); border:1px solid var(--line); border-radius:6px; padding:6px; }
+.message { color: var(--muted); font-size: 13px; }
+
+/* Keep action buttons side-by-side inside table cells */
+td button { display: inline-block; vertical-align: middle; }
+td button + button { margin-left: 8px; }
+
+/* Responsive: stack grid on narrower screens */
+@media (max-width: 1100px) {
+  .grid.two { grid-template-columns: 1fr; }
+}
+
+/* Select2 tweaks for Admin */
+#users-table td .select2-container { width: 100% !important; min-width: 240px; }
+.select2-container--default .select2-selection--multiple {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 6px;
+  min-height: 36px;
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-top: 4px;
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+  color: #6b7280;
+  margin-right: 4px;
+}
+.select2-dropdown { border-color: var(--line); }

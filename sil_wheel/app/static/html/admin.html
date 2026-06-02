@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="//assets.adobedtm.com/5d4962a43b79/814eb6e9b4e1/launch-4bc07f1e0b0b.min.js"></script>
+  <title>Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Admin Console</h1>
+      <div class="spacer"></div>
+      <a href="/admin_stats" class="button">Usage Stats</a>
+      <button id="logout-btn" title="Logout">Logout</button>
+    </header>
+    <p id="admin-msg" class="message"></p>
+
+    <section class="panel">
+      <h2>Access Requests</h2>
+      <table id="requests-table">
+        <thead>
+          <tr><th>ID</th><th>User</th><th>Email</th><th>Reason</th><th>Requested At</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <hr />
+      <h3>Create User</h3>
+      <form id="create-user-form">
+        <label>Username<input type="text" id="cu-username" required></label>
+        <label>Email<input type="email" id="cu-email"></label>
+        <label>Password<input type="password" id="cu-password" required></label>
+        <label>Role
+          <select id="cu-role">
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <button type="submit">Create</button>
+        <p id="create-user-msg" class="message"></p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Users <span id="users-count" class="message"></span></h2>
+      <div class="grid one">
+        <div>
+          <table id="users-table">
+            <thead>
+              <tr><th>User</th><th>Email</th><th>Role</th><th>Datasources</th><th>Created</th><th>Password</th><th>Actions</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/admin.js"></script>
+  <script>
+    // Redirect if not admin
+    fetch('/whoami').then(r => r.json()).then(j => {
+      if (!j.authenticated || !j.user || j.user.role !== 'admin') {
+        window.location.replace('/login');
+      }
+    });
+  </script>
+</body>
+</html>

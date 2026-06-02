@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+<head>
+    <title>Arena</title>
+    <meta charset="UTF-8">
+    <meta name="author" content="NVIDIA Spatial Intelligence Lab">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="//assets.adobedtm.com/5d4962a43b79/814eb6e9b4e1/launch-4bc07f1e0b0b.min.js"></script>
+    <link rel="icon" href="/favicon" />
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.3.2/css/dataTables.dataTables.css" />
+    <script src="https://cdn.datatables.net/2.3.2/js/dataTables.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="arena.css">
+    <script src="/main.js"></script>
+    <script src="/arena.js"></script>
+    <link rel="stylesheet" href="/docs_chatbot.css">
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+    <script defer src="/docs_chatbot.js"></script>
+</head>
+<body>
+    <div class="top-navbar">
+        <div class="navbar-left">
+            <span id="arena-title" class="arena-navbar-title">SIL-Wheel Arena</span>
+        </div>
+        <div class="navbar-right">
+            <a href="/#page=0" class="nav-button">🔍 Go To Search</a>
+            <a href="/leaderboard" class="nav-button">🏁 Leaderboard</a>
+            <button class="nav-button" id="logout-btn" title="Logout">🚪 Logout</button>
+        </div>
+    </div>
+    <div id="main-row">
+        <div class="sidebar">
+            <h2 class="sidebar-heading">ARENAS <button class="help-icon" onclick="showArenaHelp()">i</button></h2>
+            <input type="text" id="arena-search" class="arena-search-input" placeholder="Filter arenas..." />
+            <div id="arena-list"></div>
+        </div>
+
+        <div class="main-content">
+            <!-- No arena selected -->
+            <div id="arena-empty">
+                <p class="arena-empty-msg">Select an arena from the sidebar to begin.</p>
+            </div>
+
+            <!-- Leaderboard view -->
+            <div id="arena-leaderboard-view" style="display:none;">
+                <div class="arena-header">
+                    <h2 id="arena-display-name"></h2>
+                    <p id="arena-description" class="arena-description"></p><span id="arena-info-btn" class="arena-info-btn" style="display:none;"><span class="arena-info-text">i</span><span id="arena-info-tooltip" class="arena-info-tip"></span></span>
+                </div>
+                <div class="arena-actions">
+                    <button class="nav-button arena-start-btn" onclick="startEvaluating()">▶ Start Evaluating</button>
+                    <span id="arena-total-matches" class="arena-match-count"></span>
+                    <div id="arena-owner-controls" class="arena-owner-controls" style="display:none;">
+                        <button id="arena-publish-btn" class="nav-button arena-owner-btn" title="Make this arena visible to all users (or hide it back to owners/admins only)">Publish</button>
+                        <button id="arena-refresh-btn" class="nav-button arena-owner-btn" title="Re-fetch manifest.json from S3 to pick up changes to models, items, or instructions">Refresh Manifest</button>
+                    </div>
+                </div>
+                <div id="arena-vlm-judge-controls" class="arena-vlm-judge-controls" style="display:none;">
+                    <button id="arena-vlm-judge-btn" class="nav-button arena-start-btn" title="Run automated VLM judge on this arena">🔁 VLM Judge</button>
+                    <label class="arena-vlm-count-label">
+                        <input type="number" id="arena-vlm-judge-count" class="arena-vlm-count-input" value="10" min="1" max="100" title="Number of matches (1-100)" />
+                        <span>matches</span>
+                    </label>
+                </div>
+                <table id="arena-elo-table" class="display" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Model</th>
+                            <th>ELO (± 95% CI)</th>
+                            <th>Votes</th>
+                            <th>Wins</th>
+                            <th>Losses</th>
+                            <th>Ties</th>
+                            <th>Win %</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <div id="arena-elo-chart-section" style="margin-top:24px;">
+                    <h3>ELO Chart</h3>
+                    <canvas id="arena-elo-chart" height="80"></canvas>
+                </div>
+                <div id="arena-history-section" style="margin-top:24px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3 style="margin:0;">Recent Votes</h3>
+                        <button class="nav-button arena-export-btn" onclick="exportVotes()">⬇ Export CSV</button>
+                    </div>
+                    <p style="margin:4px 0 8px; font-size:0.82em; color:var(--muted);">Click row to review</p>
+                    <table id="arena-history-table" class="display" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>Time</th>
+                                <th>Input</th>
+                                <th>Model A</th>
+                                <th>Model B</th>
+                                <th>Winner</th>
+                                <th>User</th>
+                                <th>Match ID</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Annotation view -->
+            <div id="arena-annotation-view" style="display:none;">
+                <div class="arena-annotation-header">
+                    <button class="nav-button" onclick="showLeaderboardView()">← Back to Leaderboard</button>
+                    <span id="arena-match-counter" class="arena-match-count"></span>
+                </div>
+                <div id="arena-instructions" class="arena-instructions"></div>
+                <div class="arena-section-label">Context</div>
+                <div id="arena-inputs"></div>
+                <hr class="arena-divider">
+                <div class="arena-section-label">Compare</div>
+                <div class="arena-comparison">
+                    <div class="arena-output" id="arena-output-a">
+                        <h3 class="arena-output-label">Model A</h3>
+                        <div class="arena-output-content" id="arena-content-a"></div>
+                    </div>
+                    <div class="arena-output" id="arena-output-b">
+                        <h3 class="arena-output-label">Model B</h3>
+                        <div class="arena-output-content" id="arena-content-b"></div>
+                    </div>
+                </div>
+                <div class="arena-vote-row" id="arena-vote-row">
+                    <button class="arena-vote-btn pick-a-strong" onclick="submitVote('a_strong')">A is much better <kbd>1</kbd></button>
+                    <button class="arena-vote-btn pick-a" onclick="submitVote('a')">A is better <kbd>2</kbd></button>
+                    <button class="arena-vote-btn tie" onclick="submitVote('tie')">Tie <kbd>3</kbd></button>
+                    <button class="arena-vote-btn pick-b" onclick="submitVote('b')">B is better <kbd>4</kbd></button>
+                    <button class="arena-vote-btn pick-b-strong" onclick="submitVote('b_strong')">B is much better <kbd>5</kbd></button>
+                </div>
+                <div class="arena-skip-row" id="arena-skip-row">
+                    <button class="arena-skip-btn both-bad" onclick="submitVote('both_bad')">Both are bad <kbd>0</kbd></button>
+                    <button class="arena-skip-btn" onclick="skipMatch()">Skip <kbd>S</kbd></button>
+                </div>
+                <div class="arena-reasoning-row" id="arena-reasoning-row">
+                    <label class="arena-reasoning-label" for="arena-reasoning">Reasoning <span class="arena-reasoning-optional">(optional)</span></label>
+                    <span id="arena-reasoning-badge" class="arena-vlm-badge" style="display:none;">VLM Judge</span>
+                    <textarea id="arena-reasoning" class="arena-reasoning-input" rows="2" placeholder="Why did you pick this one?"></textarea>
+                </div>
+                <div class="arena-reveal" id="arena-reveal" style="display:none;">
+                    <div class="arena-reveal-row">
+                        <div class="arena-reveal-model">
+                            <span class="arena-reveal-label">Model A:</span>
+                            <span id="reveal-name-a" class="arena-reveal-name"></span>
+                            <span id="reveal-elo-a" class="arena-elo-change"></span>
+                        </div>
+                        <div class="arena-reveal-model">
+                            <span class="arena-reveal-label">Model B:</span>
+                            <span id="reveal-name-b" class="arena-reveal-name"></span>
+                            <span id="reveal-elo-b" class="arena-elo-change"></span>
+                        </div>
+                    </div>
+                    <button id="arena-next-btn" class="nav-button arena-start-btn" onclick="nextMatch()">Next Vote →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Developed and maintained by the <a href="https://research.nvidia.com/labs/toronto-ai/" style="color: #76B900;"> NVIDIA Spatial Intelligence Lab.</a></p>
+    </footer>
+
+    <div id="arena-help-content" class="help-box">
+        <span class="clear-annotation-button" onclick="hideArenaHelp()">&times;</span>
+        <h3>Arenas</h3>
+        <p>Each arena is a blind A/B evaluation between two models on the same input. You vote on which output is better without knowing which model produced it. Votes update ELO ratings.</p>
+        <p><b>Publish / Unpublish:</b> Unpublished arenas are only visible to owners and admins. Publish to make an arena visible to all users.</p>
+        <p><b>Refresh Manifest:</b> Re-fetches the arena's manifest from S3. Use this after updating models, items, or instructions on S3 without restarting the server.</p>
+        <p><b>Creating a new arena:</b> Upload a <code>manifest.json</code> and asset files to S3 under <code>arenas/{name}/assets/{item_id}/</code>. The server auto-discovers it within 60 seconds.</p>
+    </div>
+
+    <div id="loading-block">
+        <div class="grid-loader">
+            <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+            <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+            <div class="grid-loader-dot"></div><div class="grid-loader-dot"></div><div class="grid-loader-dot"></div>
+        </div>
+        <div id="loading-message">Loading...</div>
+        <div id="loading-elapsed"></div>
+    </div>
+</body>
+</html>

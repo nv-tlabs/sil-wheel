@@ -1,0 +1,253 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* Pruned: unused .clip-id-column styles */
+
+td.dt-control {
+    cursor: pointer;
+    text-align: center;
+}
+td.dt-control:before {
+    content: '+';
+    font-weight: bold;
+    color: green;
+}
+tr.shown td.dt-control:before {
+    content: '-';
+    color: red;
+}
+
+.filters .metrics-panel {
+    background: #fff;
+    color: #111827;
+    font-size: 0.9em;
+    cursor: pointer;
+    width: 100%;
+    display: inline-flex;
+    justify-content: flex-start;
+    text-align: left;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.filters .metrics-panel:hover {
+    background-color: #f3f4f6;
+    border-color: #d1d5db;
+}
+.filters .metrics-panel.selected {
+    background: #f3f4f6;
+    border-color: #cbd5e1;
+    box-shadow: none;
+}
+.filters .metrics-panel.selected:hover {
+    background-color: #f3f4f6;
+}
+
+.evaluation-container {
+    margin: auto;
+    max-width: 1000px;
+    border-radius: 0.3px;
+    width: 100%;
+    padding: 20px;
+    margin-bottom: 20px;
+    font-size: 1em;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    background-color: #fff;
+}
+.evaluation-container .filter-group-title {
+    font-size: 20px;
+    color: #1f2937;
+    margin-top: 0px;
+    padding: 0px;
+    margin-bottom: 15px; 
+}
+.evaluation-container {
+    color: #374151;
+    font-size: 1em;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+}
+
+.evaluation-container select {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1em;
+    width: 50%;
+    margin-top: 5px; 
+}
+#tab-container {
+    margin-top: 10px;
+    border-bottom: 1px solid #ccc;
+}
+
+#search-tabs {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Add-tab as a tab-looking entry */
+.tab-entry.add {
+    display: flex;
+    align-items: center;
+    padding: 0;
+}
+.tab-entry.add .add-tab-btn {
+    padding: 6px 10px;
+    border-radius: 4px 4px 0 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-weight: bold;
+    line-height: 1;
+}
+.tab-entry.add .add-tab-btn:hover {
+    background: #f0f0f0;
+}
+
+.tab-entry {
+    background-color: #eee;
+    padding: 6px 10px;
+    border-radius: 4px 4px 0 0;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+}
+
+.tab-entry.active {
+    background-color: #ddd;
+    font-weight: bold;
+    border-bottom: 2px solid white;
+}
+
+.tab-label {
+    margin-right: 10px;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.close-btn {
+    color: #888;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close-btn:hover {
+    color: #c00;
+}
+
+#tab-content-container {
+    border: 1px solid #ccc;
+    border-top: none;
+    padding: 10px;
+    background-color: white;
+}
+
+.tab-content {
+    display: none;
+}
+
+/* Pruned: unused #clip-filters style */
+
+/* Always ellipsize long model names; width adapts via media queries */
+table.dataTable th.model-col,
+table.dataTable td.model-col {
+    width: 240px;
+    max-width: 240px;
+}
+table.dataTable td.model-col .model-text {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+#active-leaderboard-pill > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 4px 0;
+}
+#active-leaderboard-pill > div > span {
+    font-weight: 600;
+}
+#active-leaderboard-pill > div > button {
+    border-radius: 999px;
+    margin-bottom: 5px;
+    padding: 8px 14px;
+    font-size: 0.95em;
+    line-height: 1.1;
+    background: #fff7cc;
+    border: 1px solid #f2e6a9;
+    color: #6b5d00;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Constrain the Model column on small screens and ellipsize long names */
+@media (max-width: 900px) {
+    table.dataTable th.model-col,
+    table.dataTable td.model-col {
+        width: 160px;
+        max-width: 160px;
+    }
+}
+
+@media (max-width: 600px) {
+    table.dataTable th.model-col,
+    table.dataTable td.model-col {
+        width: 120px;
+        max-width: 120px;
+    }
+}
+
+@media (max-width: 1512px) {
+    /* MacBook-friendly content width and centering */
+    #tab-content-container {
+        /* Center the table area and cap width for 13–14" MacBook viewports */
+        margin: 16px auto;
+        width: min(1360px, calc(100% - 32px));
+    }
+    table.dataTable {
+        font-size: 13px;
+    }
+    table.dataTable th,
+    table.dataTable td {
+        padding: 8px 10px;
+    }
+    table.dataTable th.model-col,
+    table.dataTable td.model-col {
+        width: 200px;
+        max-width: 200px;
+    }
+}
+
+.dataTables_wrapper {
+    overflow-x: auto;
+}
+
+.pred-reasoning-col .reasoning-cell {
+    cursor: pointer;
+    text-decoration: underline dotted #9ca3af;
+    text-underline-offset: 2px;
+}

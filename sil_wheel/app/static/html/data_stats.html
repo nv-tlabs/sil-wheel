@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="//assets.adobedtm.com/5d4962a43b79/814eb6e9b4e1/launch-4bc07f1e0b0b.min.js"></script>
+    <title>Data Analytics</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+    <link rel="icon" href="/favicon" />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/data_stats.css" />
+    <link rel="stylesheet" href="/docs_chatbot.css">
+    <script src="/main.js"></script>
+    <script src="/data_stats.js"></script>
+    <script defer src="/docs_chatbot.js"></script>
+
+    <script>
+        fetch('/whoami').then(r => r.json()).then(j => {
+            if (!j.authenticated || !j.user) {
+                window.location.replace('/login');
+            }
+        });
+
+        function goToFirstPage() {
+            try {
+                // Navigate to the main search page (hash route)
+                window.location.href = '/#page=0';
+            } catch (e) {
+                window.location.assign('/#page=0');
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <header class="top-navbar" role="banner">
+        <div class="navbar-left">
+            <strong>Data • Analytics</strong>
+        </div>
+        <div class="navbar-right">
+            <a href="/#page=0" class="nav-button">🔍 Go To Search</a>
+            <button class="nav-button" id="logout-btn" title="Logout">🚪 Logout</button>
+        </div>
+    </header>
+
+    <main id="main-content" role="main">
+      <div class="main-content">
+        <h2 class="main-content-heading">
+            <div>
+                <button class="home-button" onclick="goToFirstPage()" title="Go to First Page" aria-label="Home">
+                    <img src="/favicon" width="64" />
+                </button>
+            </div>
+            <div>
+                <div> SIL-Wheel: Analyze Data </div>
+            </div>
+        </h2>
+
+        <div class="container">
+            <section class="panel">
+            <h2>Datasets</h2>
+            <div class="controls">
+                <label for="dataset-select">Select datasets:</label>
+                <select id="dataset-select" multiple></select>
+                <div class="inline-actions">
+                    <button id="select-all-ds" type="button" title="Select All Datasets">Select All</button>
+                    <button id="clear-ds" type="button" title="Clear All">Clear All</button>
+                    <span id="ds-count" class="helper" title="Selected / Total"></span>
+                </div>
+            </div>
+                <p id="stats-msg" class="message"></p>
+            </section>
+
+            <section class="panel">
+                <h2>Trajectory Statistics</h2>
+                <div id="stats-grid" class="grid two"></div>
+            </section>
+            <section class="panel">
+                <h2>Data Statistics</h2>
+                <div id="data-stats-grid" class="grid two"></div>
+            </section>
+        </div>
+      </div>
+    </main>
+
+</body>
+</html>

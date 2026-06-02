@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="//assets.adobedtm.com/5d4962a43b79/814eb6e9b4e1/launch-4bc07f1e0b0b.min.js"></script>
+  <title>Admin Usage Stats</title>
+  <link rel="stylesheet" href="/admin.css" />
+  <link rel="stylesheet" href="/admin_stats.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Admin • Usage Statistics</h1>
+      <div class="spacer"></div>
+      <button id="dashboard-png-btn" disabled title="Download summary dashboard as PNG">Download Dashboard PNG</button>
+      <a href="/admin" class="button">Admin Console</a>
+      <button id="logout-btn" title="Logout">Logout</button>
+    </header>
+
+    <p id="stats-msg" class="message"></p>
+
+    <section class="panel">
+      <h2>Summary</h2>
+      <div id="summary" class="grid three"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Daily Unique Users</h2>
+      <div id="daily-unique-users" class="chart"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Avg Requests by Hour (per day)</h2>
+      <div id="by-hour" class="chart"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Endpoint Usage</h2>
+      <div id="endpoint-usage" class="chart"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Search & Data Sources</h2>
+      <div class="grid two">
+        <!-- Row 1: Search Usage | Avg Search Time -->
+        <div>
+          <h3>Search Usage</h3>
+          <div id="search-usage" class="chart"></div>
+        </div>
+        <div>
+          <h3>Avg Search Time (s)</h3>
+          <div id="avg-search-ms" class="chart"></div>
+        </div>
+        <!-- Row 2: Top Data Sources | Top Labels -->
+        <div>
+          <h3>Top Data Sources</h3>
+          <div id="top-ds" class="chart"></div>
+        </div>
+        <div>
+          <h3>Top Labels</h3>
+          <div id="top-labels" class="chart"></div>
+        </div>
+        <!-- Row 3: Top Caption Searches | Top Caption Embed Searches -->
+        <div>
+          <h3>Top Caption Searches</h3>
+          <div id="top-caption-searches" class="chart"></div>
+        </div>
+        <div>
+          <h3>Top Caption Embed Searches</h3>
+          <div id="top-caption-embed-searches" class="chart"></div>
+        </div>
+        <!-- Row 4: Top Visual Search Texts | Top Text-to-Video Semantic Search Texts -->
+        <div>
+          <h3>Top Visual Search Texts</h3>
+          <div id="top-visual-search-texts" class="chart"></div>
+        </div>
+        <!-- Row 5: Top Text-to-Video Semantic Search Texts | Zero-Result Searches -->
+        <div>
+          <h3>Top Text-to-Video Semantic Search Texts</h3>
+          <div id="top-semantic-search-texts" class="chart"></div>
+        </div>
+        <div>
+          <h3>Zero-Result Searches</h3>
+          <div id="zero-result-rate" class="chart"></div>
+        </div>
+        <!-- Row 6: Zero-result queries per search type -->
+        <div>
+          <h3>Zero-Result Text-to-Video</h3>
+          <div id="zero-semantic-texts" class="chart"></div>
+        </div>
+        <div>
+          <h3>Zero-Result Captions</h3>
+          <div id="zero-caption-texts" class="chart"></div>
+        </div>
+        <div>
+          <h3>Zero-Result Caption Embed Searches</h3>
+          <div id="zero-caption-embed-texts" class="chart"></div>
+        </div>
+        <div>
+          <h3>Zero-Result Visual Searches</h3>
+          <div id="zero-visual-texts" class="chart"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Classifier Training</h2>
+      <div class="grid two">
+        <div>
+          <h3>Trainings by Label</h3>
+          <div id="classifier-trains-by-label" class="chart"></div>
+        </div>
+        <div>
+          <h3>Trainings by Embed Type</h3>
+          <div id="classifier-trains-by-embed-type" class="chart"></div>
+        </div>
+        <div>
+          <h3>Trainings by User</h3>
+          <div id="classifier-trains-by-user" class="chart"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Query Rewrite</h2>
+      <div id="query-rewrite-summary" class="grid three"></div>
+      <div class="grid two">
+        <div>
+          <h3>Top Rewritten Queries</h3>
+          <div id="rewrite-top-queries" class="chart"></div>
+        </div>
+        <div>
+          <h3>Top Rewrite Users</h3>
+          <div id="rewrite-top-users" class="chart"></div>
+        </div>
+      </div>
+      <div id="rewrite-by-type"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Cache Statistics</h2>
+      <div id="cache" class="chart"></div>
+      <h3>Daily Cache Hit Rate</h3>
+      <div id="cache-hit-rate" class="chart"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Annotation Activity</h2>
+      <div class="grid two">
+        <div>
+          <h3>Added per Day</h3>
+          <div id="ann-added" class="chart"></div>
+        </div>
+        <div>
+          <h3>Deleted per Day</h3>
+          <div id="ann-deleted" class="chart"></div>
+        </div>
+        <div>
+          <h3>Autolabeled per Day</h3>
+          <div id="ann-autolabeled" class="chart"></div>
+        </div>
+        <div>
+          <h3>Verified per Day</h3>
+          <div id="ann-verified" class="chart"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Requests per User</h2>
+      <div id="requests-per-user" class="chart"></div>
+    </section>
+
+    <section class="panel">
+      <h2>HTTP Status & Methods</h2>
+      <div class="grid two">
+        <div>
+          <h3>Status Codes</h3>
+          <div id="status" class="chart"></div>
+        </div>
+        <div>
+          <h3>Methods</h3>
+          <div id="methods" class="chart"></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="/admin_stats.js"></script>
+  <script>
+    // Redirect if not admin
+    fetch('/whoami').then(r => r.json()).then(j => {
+      if (!j.authenticated || !j.user || j.user.role !== 'admin') {
+        window.location.replace('/login');
+      }
+    });
+  </script>
+</body>
+</html>
