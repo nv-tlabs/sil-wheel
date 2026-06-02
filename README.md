@@ -196,7 +196,7 @@ pip install --no-deps git+https://github.com/facebookresearch/perception_models.
 Skip this step if you don't plan to extract or evaluate `pe_core_*`
 embeddings.
 
-## Hello World on SIL-Wheel
+## QuickStart with SIL-Wheel
 
 The fastest way to see Wheel end-to-end is the **nuScenes mini**
 walkthrough under
