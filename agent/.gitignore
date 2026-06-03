@@ -1,0 +1,16 @@
+# Credentials - never commit
+.env
+.env.*
+!.env.template
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Agent output
+output/
+*.txt.tmp
