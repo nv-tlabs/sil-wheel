@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 <h1 align="center">
   <img src="sil_wheel/app/static/images/car.png" width="40" alt="SIL-Wheel logo" />
   SIL-Wheel

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Anti-Patterns — Recurring SDK Footguns
 
 Distilled from real agent sessions on Agent Hub (community

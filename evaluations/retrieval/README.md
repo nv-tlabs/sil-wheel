@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Video retrieval benchmark
 
 A 1:1 paired text↔video retrieval driver that plugs in different

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Search-Tool Calibration — How Noisy Is Each Tool, Really?
 
 **Audience**: anyone (human or agent) deciding which SIL Wheel tool to reach for. **Purpose**: stop the "confidently wrong" failure mode where an agent picks a noisy tool, sorts by `score`, returns 20 clips, and reports them as matches without acknowledging the calibration trade-offs.

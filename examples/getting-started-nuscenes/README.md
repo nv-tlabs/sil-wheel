@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Getting Started: SIL-Wheel + nuScenes
 
 A single script that takes you from a fresh SIL-Wheel checkout to a
