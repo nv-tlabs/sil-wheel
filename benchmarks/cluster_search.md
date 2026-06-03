@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Cluster Search Benchmark
 
 _commit `7e0ed23` · date 2026-02-28 22:31:48 · embeddings dir: /path/to/wheel-data/cosmos_embeddings/ · size: 2.6 GB_

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Data Store Benchmark
 
 _commit `207d715` · date 2026-03-01 21:57:34 · db: /path/to/wheel-data/annotations_latest_schema.db · db size: 21.1 GB_

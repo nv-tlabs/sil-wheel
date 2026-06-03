@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Trajectory Search Benchmark
 
 _commit `4121c3b` · date 2026-02-28 11:42:22 · data dir: /path/to/wheel-data/trajectory_data/ · size: 378.6 GB · safetensors clips: 6,321,181 · index rows [full]: 15,404,879 · index rows [10s]: 18,963,543 · index rows [5s]: 25,284,724_

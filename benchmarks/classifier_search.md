@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Classifier Search Benchmark
 
 _commit `b9c102e` · date 2026-03-29 18:06:49 · classifier dir: /path/to/classifiers/ · size: 1.6 GB_

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Semantic Search Benchmark
 
 _commit `24cc8a6` · date 2026-04-02 20:54:05 · embeddings dir: /path/to/wheel-data/ · size: 1.1 TB · index spec: IVF4096,PQ96x8 · ks: 4096 8192 16384 327678 · index size: 19996448_

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Bug Report Configuration
 
 Users can submit bug reports from the annotation and leaderboard pages via a button in the footer. Reports are appended to a Google Spreadsheet using a service account.

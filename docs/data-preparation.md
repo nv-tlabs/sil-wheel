@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Data Preparation
 
 We provide various scripts to prepare the videos and metadata for the server:
@@ -853,5 +856,3 @@ Outputs
 
 Performance
 - Prints per‑dataset elapsed time and total runtime.
-
-

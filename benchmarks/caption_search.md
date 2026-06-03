@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Caption Search Benchmark
 
 _commit `e502a81` · date 2026-04-02 18:56:05 · db: /path/to/wheel-data/captions_schema_latest.db · db size: 226.7 GB_

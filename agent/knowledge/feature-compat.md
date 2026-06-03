@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Feature × Data Source Compatibility Matrix
 
 **Why this matters**: SIL Wheel features are NOT uniformly available across data sources. The most expensive silent failures of 2026 came from agents composing `classifier_select=X data_source=Y` or `search_speed=X data_source=Y` where the feature `X` is not indexed on source `Y` — these return `0` quickly (caption / classifier) or slowly (trajectory predicate, ~50–150 s) with **no error** and the agent concludes "no clips" when the right answer is "wrong source".
