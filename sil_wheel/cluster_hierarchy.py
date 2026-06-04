@@ -1,0 +1,318 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Recursive (hierarchical) k-means with **always-on** per-level topic labels.
+
+A recursive layer on top of the flat :class:`sil_wheel.cluster_build.FaissKMeans`:
+each cluster is re-clustered into finer sub-clusters, and topics are extracted at
+every internal node, so the labels of a node's children can be read to decide
+which child to descend into -- turning the hierarchy into a progressively finer
+"cluster-topic taxonomy".
+
+* the per-node split reuses :class:`~sil_wheel.cluster_build.FaissKMeans`
+  (optionally spherical);
+* the per-node topic labels reuse
+  :func:`sil_wheel.stores.cluster_topics.extract_topics_for_run`
+  (TF-IDF over captions + an optional one-phrase LLM summary).
+
+Because topics come from captions, a captions DB (or an explicit ``topic_fn``)
+is *required*; we refuse to build a topic-less hierarchy. Both backends are
+injectable so the recursion/IO can be unit-tested without faiss or a DB.
+"""
+from __future__ import annotations
+
+import json
+import tempfile
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import numpy as np
+
+# (labels, centroids) <- (embeddings, k, seed)
+ClusterFn = Callable[[np.ndarray, int, int], "tuple[np.ndarray, np.ndarray]"]
+# {child_cid: {"keywords": [...], "description": "..."}} <- (clip_ids, labels, k)
+TopicFn = Callable[[Sequence[str], np.ndarray, int], "dict[str, dict]"]
+
+
+@dataclass
+class HierNode:
+    """One node in the cluster hierarchy.
+
+    ``path`` is the dotted hierarchical id ("" at the root, then "3", "3.7",
+    "3.7.12"). ``keywords``/``description`` describe *this* node as one of its
+    parent's children (empty at the root). Internal nodes have ``children``.
+    """
+
+    path: str
+    depth: int
+    size: int
+    keywords: list[str] = field(default_factory=list)
+    description: str = ""
+    children: dict[str, "HierNode"] = field(default_factory=dict)
+    # Populated only on leaf nodes (a node with no children), so the total
+    # clip_id storage across the tree is exactly n.
+    clip_ids: list[str] = field(default_factory=list)
+
+
+def _resolve_branching(branching: int | Sequence[int], depth: int) -> int:
+    """k to use when splitting a node at ``depth`` into level ``depth+1``."""
+    if isinstance(branching, int):
+        return branching
+    return branching[depth] if depth < len(branching) else branching[-1]
+
+
+def build_hierarchical_clustering(
+    embeddings: np.ndarray,
+    clip_ids: Sequence[str],
+    *,
+    branching: int | Sequence[int] = 10,
+    max_depth: int = 3,
+    min_cluster_size: int = 50,
+    cluster_fn: ClusterFn | None = None,
+    topic_fn: TopicFn | None = None,
+    captions_db_path: str | Path | None = None,
+    caption_model: str | None = None,
+    samples_per_cluster: int = 50,
+    spherical: bool = True,
+    seed: int = 1234,
+    output_dir: str | Path | None = None,
+) -> HierNode:
+    """Recursively k-means ``embeddings`` and label every level with topics.
+
+    Parameters
+    ----------
+    embeddings, clip_ids
+        ``(n, d)`` float array and the aligned length-``n`` clip ids.
+    branching
+        Children per split. ``int`` => same k at every level; a sequence =>
+        per-level k (``branching[depth]`` for the split below ``depth``).
+    max_depth
+        Maximum hierarchy depth. Root is depth 0; ``max_depth`` split levels.
+    min_cluster_size
+        Nodes with fewer members than this are leaves (never split).
+    cluster_fn
+        ``(X, k, seed) -> (labels, centroids)``. Defaults to
+        :class:`~sil_wheel.cluster_build.FaissKMeans` (needs faiss at run time).
+    topic_fn
+        ``(clip_ids, labels, k) -> {cid: {"keywords", "description"}}``.
+        Defaults to
+        :func:`~sil_wheel.stores.cluster_topics.extract_topics_for_run`.
+    captions_db_path
+        SQLite captions DB. **Required** unless an explicit ``topic_fn`` is
+        given -- topics are mandatory at every level.
+    output_dir
+        If set, writes ``hier_assignments.parquet`` + ``hier_topics.json``.
+
+    Returns
+    -------
+    HierNode
+        The root of the hierarchy (root has no topics; its children do).
+    """
+    if topic_fn is None:
+        if captions_db_path is None:
+            raise ValueError(
+                "topic modeling is mandatory at every level: pass either a "
+                "captions_db_path or an explicit topic_fn. Refusing to build a "
+                "topic-less hierarchy."
+            )
+        topic_fn = _wheel_topic_fn(captions_db_path, caption_model, samples_per_cluster)
+    if cluster_fn is None:
+        cluster_fn = _wheel_cluster_fn(spherical=spherical)
+
+    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
+    clip_ids = list(clip_ids)
+    if len(embeddings) != len(clip_ids):
+        raise ValueError(
+            f"embeddings rows ({len(embeddings)}) != clip_ids ({len(clip_ids)})"
+        )
+
+    root = HierNode(path="", depth=0, size=len(clip_ids))
+    _split_node(
+        root,
+        embeddings=embeddings,
+        clip_ids=clip_ids,
+        branching=branching,
+        max_depth=max_depth,
+        min_cluster_size=min_cluster_size,
+        cluster_fn=cluster_fn,
+        topic_fn=topic_fn,
+        seed=seed,
+    )
+
+    if output_dir is not None:
+        _write_outputs(root, Path(output_dir))
+    return root
+
+
+def _split_node(
+    node: HierNode,
+    *,
+    embeddings: np.ndarray,
+    clip_ids: list[str],
+    branching: int | Sequence[int],
+    max_depth: int,
+    min_cluster_size: int,
+    cluster_fn: ClusterFn,
+    topic_fn: TopicFn,
+    seed: int,
+) -> None:
+    """Split ``node`` in place, recursing into each child."""
+    k = _resolve_branching(branching, node.depth)
+    n = len(clip_ids)
+    # Need enough members to form k meaningful clusters, and to be allowed to.
+    if node.depth >= max_depth or n < min_cluster_size or n < 2 * k:
+        node.clip_ids = list(clip_ids)  # this node is a leaf
+        return
+
+    labels, _centroids = cluster_fn(embeddings, k, seed)
+    labels = np.asarray(labels).astype(np.int64).reshape(-1)
+
+    # Topics for this node's k children -- the always-on labeling step.
+    topics = topic_fn(clip_ids, labels, k) or {}
+
+    for cid in range(k):
+        mask = labels == cid
+        n_members = int(mask.sum())
+        if n_members == 0:
+            continue
+        child_path = f"{node.path}.{cid}" if node.path else str(cid)
+        topic = topics.get(str(cid), topics.get(cid, {}))
+        child = HierNode(
+            path=child_path,
+            depth=node.depth + 1,
+            size=n_members,
+            keywords=list(topic.get("keywords", [])),
+            description=topic.get("description", ""),
+        )
+        node.children[child_path] = child
+        idx = np.flatnonzero(mask)
+        _split_node(
+            child,
+            embeddings=embeddings[idx],
+            clip_ids=[clip_ids[i] for i in idx],
+            branching=branching,
+            max_depth=max_depth,
+            min_cluster_size=min_cluster_size,
+            cluster_fn=cluster_fn,
+            topic_fn=topic_fn,
+            seed=seed,
+        )
+
+
+def flatten_leaf_assignments(root: HierNode) -> dict:
+    """Return ``{clip_id: leaf_path}`` for every clip in the hierarchy.
+
+    A node with no children is a leaf and carries its members in
+    ``clip_ids``; this walks the tree and assigns each clip to its leaf path.
+    """
+    out: dict[str, str] = {}
+
+    def walk(n: HierNode) -> None:
+        if not n.children:
+            for cid in n.clip_ids:
+                out[cid] = n.path
+            return
+        for c in n.children.values():
+            walk(c)
+
+    walk(root)
+    return out
+
+
+# --------------------------------------------------------------------------
+# Output
+# --------------------------------------------------------------------------
+
+def _write_outputs(root: HierNode, output_dir: Path) -> None:
+    import pandas as pd
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    topics_out: dict[str, dict] = {}
+
+    def walk(n: HierNode) -> None:
+        if n.path:  # root has no topics
+            topics_out[n.path] = {
+                "keywords": n.keywords,
+                "description": n.description,
+                "size": n.size,
+                "depth": n.depth,
+            }
+        for c in n.children.values():
+            walk(c)
+
+    walk(root)
+    (output_dir / "hier_topics.json").write_text(json.dumps(topics_out, indent=2))
+
+    leaf_map = flatten_leaf_assignments(root)
+    depth_by_path = {p: t["depth"] for p, t in topics_out.items()}
+    clip_ids = list(leaf_map)
+    pd.DataFrame(
+        {
+            "clip_id": clip_ids,
+            "path": [leaf_map[c] for c in clip_ids],
+            "depth": [depth_by_path.get(leaf_map[c], 0) for c in clip_ids],
+        }
+    ).to_parquet(output_dir / "hier_assignments.parquet", index=False)
+
+
+def _wheel_cluster_fn(spherical: bool = True) -> ClusterFn:
+    """Default split backend: :class:`~sil_wheel.cluster_build.FaissKMeans`."""
+
+    def cluster_fn(X: np.ndarray, k: int, seed: int):
+        from sil_wheel.cluster_build import FaissKMeans
+
+        km = FaissKMeans(
+            feature_dim=X.shape[1],
+            n_clusters=k,
+            spherical_kmeans=spherical,
+            seed=seed,
+            verbose=False,
+        )
+        km.fit(X)
+        labels, _distances = km.predict(np.ascontiguousarray(X, dtype=np.float32))
+        return labels, km.centroids
+
+    return cluster_fn
+
+
+def _wheel_topic_fn(
+    captions_db_path: str | Path,
+    caption_model: str | None,
+    samples_per_cluster: int,
+) -> TopicFn:
+    """Default topic backend:
+    :func:`~sil_wheel.stores.cluster_topics.extract_topics_for_run` over a temp
+    run dir built from this node's assignments."""
+
+    def topic_fn(clip_ids: Sequence[str], labels: np.ndarray, k: int) -> dict:
+        from sil_wheel.cluster_build import write_cluster_assignments
+        from sil_wheel.stores.cluster_topics import extract_topics_for_run, read_topics
+
+        labels = np.asarray(labels).astype(np.int64).reshape(-1)
+        distances = np.zeros(len(labels), dtype=np.float32)  # unused for topics
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            write_cluster_assignments(run_dir, labels, distances, list(clip_ids), k)
+            extract_topics_for_run(
+                run_dir,
+                str(captions_db_path),
+                model_name=caption_model,
+                samples_per_cluster=samples_per_cluster,
+            )
+            return read_topics(run_dir).get("topics", {})
+
+    return topic_fn
