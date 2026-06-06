@@ -110,3 +110,31 @@ Notable flags (see `--help` for the full list):
 Output: one markdown section per metric. Rows are grouped by `scenario` in
 human mode (per auto-selected scenario plus an `all` row), or by
 `data_source` in caption-vs-caption mode. Numbers are means across clips.
+
+## References & attribution
+
+The reference-based n-gram metrics, BERTScore, Lingo-Judge, and EVQAScore
+re-use published metrics / external models. `llm_judge` and `vlm_judge` are our
+own prompts (the latter mirrors `sil_wheel.llm.vlm_judge`, the live server's
+VLM judge).
+
+| Metric | Source | Model / package |
+| --- | --- | --- |
+| `nlg` (BLEU) | Papineni et al., *BLEU*, ACL 2002 | `pycocoevalcap` |
+| `nlg` (ROUGE) | Lin, *ROUGE*, 2004 | `rouge-score` (google-research) |
+| `nlg` (METEOR) | Banerjee & Lavie, *METEOR*, 2005 | `nltk` |
+| `nlg` (CIDEr) | Vedantam et al., *CIDEr*, CVPR 2015 | `pycocoevalcap` |
+| `bertscore` | Zhang et al., *BERTScore*, ICLR 2020 | `bert-score`; `microsoft/deberta-xlarge-mnli` (MIT) |
+| `lingojudge` | Marcu et al., *LingoQA*, ECCV 2024 ([arXiv:2312.14115](https://arxiv.org/abs/2312.14115), [code](https://github.com/wayveai/LingoQA)) | `wayveai/Lingo-Judge` |
+| `evqa` | Liu et al., *EVQAScore*, [arXiv:2411.06908](https://arxiv.org/abs/2411.06908) (builds on EMScore, Shi et al., CVPR 2022) | independent reimplementation; SigLIP/CLIP + Ultralytics YOLO11 |
+
+**Licensing note (for the open-source release).** Code here is Apache-2.0 and
+does not bundle any third-party model weights — encoders/classifiers are pulled
+at runtime from Hugging Face under their own model-card licenses (CLIP: MIT,
+DeBERTa: MIT, SigLIP: Apache-2.0). The one exception to watch:
+**Ultralytics YOLO11 (`ultralytics`) is AGPL-3.0**, used only by `evqa`. It is
+an optional dependency (the `[evqa]` extra), lazy-imported, and neither its code
+nor its `yolo11x-seg.pt` weight is committed to this repo. If EVQAScore is run,
+that happens in the user's own environment; review AGPL obligations before
+redistributing anything that bundles it. `evqa` is the only metric with this
+constraint — the rest are permissive.

@@ -207,7 +207,11 @@ LINGO_JUDGE_QUESTION = "Describe what is happening in this driving video."
 
 
 class LingoJudge:
-    """LingoJudge classifier (wayveai/Lingo-Judge, arXiv:2312.14115). Logit > 0 means correct."""
+    """Lingo-Judge truthfulness classifier from LingoQA (Marcu et al., "LingoQA:
+    Visual Question Answering for Autonomous Driving", ECCV 2024,
+    arXiv:2312.14115; code github.com/wayveai/LingoQA, model
+    huggingface.co/wayveai/Lingo-Judge). We frame each caption-vs-caption pair
+    in LingoQA's question/answer/student format. Logit > 0 means correct."""
 
     def __init__(
         self,

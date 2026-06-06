@@ -13,11 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""EVQAScore (arXiv 2411.06908): reference-free video caption quality.
+"""EVQAScore: reference-free video-caption quality.
 
-Coarse score (global frame ↔ caption) + fine score (YOLO crops ↔ LLM
-keywords), combined via bidirectional max-matching + harmonic mean. Heavy
-deps live behind the ``[evqa]`` extra (ultralytics, SigLIP/CLIP weights).
+Independent reimplementation of EVQAScore (Liu et al., "EVQAScore: A
+Fine-grained Metric for Video Question Answering Data Quality Evaluation",
+arXiv:2411.06908), which itself builds on EMScore (Shi et al., CVPR 2022). This
+is NOT the authors' original code.
+
+Coarse score (global frame <-> caption) + fine score (YOLO crops <-> LLM
+keywords), combined via bidirectional max-matching + harmonic mean.
+
+Third-party components are downloaded/installed at runtime, each under its own
+license (review before redistribution):
+  * visual encoder: SigLIP (google/siglip-so400m-patch14-384) or CLIP
+    (openai/clip-vit-large-patch14);
+  * object crops: Ultralytics YOLO11 (``ultralytics``) -- **AGPL-3.0**; gated
+    behind the optional ``[evqa]`` extra and never bundled or distributed here.
 """
 import gc
 import hashlib

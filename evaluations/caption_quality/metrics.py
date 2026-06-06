@@ -41,7 +41,11 @@ def _row(pair: Dict[str, Any], **scores: float) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 class NLGScorer:
-    """BLEU-4 / ROUGE-1/2/L / METEOR / CIDEr per pair. CIDEr uses TF-IDF over the batch — small batches degrade to ~0."""
+    """BLEU-4 / ROUGE-1/2/L / METEOR / CIDEr per pair, computed via pycocoevalcap
+    (BLEU, CIDEr), google-research rouge_score, and NLTK (METEOR). Metrics:
+    BLEU (Papineni et al. 2002), ROUGE (Lin 2004), METEOR (Banerjee & Lavie
+    2005), CIDEr (Vedantam et al. 2015). CIDEr uses TF-IDF over the batch, so
+    small batches degrade to ~0."""
 
     SCORE_DIMS = ("bleu4", "rouge1_f", "rouge2_f", "rougeL_f", "meteor", "cider")
 
@@ -122,7 +126,9 @@ def score_nlg(pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 class BERTScorer:
-    """BERTScore P / R / F1, holding the HF model across calls."""
+    """BERTScore P / R / F1 (Zhang et al., "BERTScore: Evaluating Text
+    Generation with BERT", ICLR 2020; via the bert_score package), holding the
+    HF model (default microsoft/deberta-xlarge-mnli) across calls."""
 
     SCORE_DIMS = ("bert_precision", "bert_recall", "bert_f1")
 
