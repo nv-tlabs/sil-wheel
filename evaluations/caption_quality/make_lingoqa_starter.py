@@ -14,87 +14,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Build a runnable starter dataset from the public LingoQA validation set.
+"""Build a runnable caption-quality starter from the public LingoQA val split.
 
-Downloads the LingoQA val split (Marcu et al., "LingoQA: Visual Question
-Answering for Autonomous Driving", ECCV 2024, arXiv:2312.14115;
-https://github.com/wayveai/LingoQA) and writes a small captions SQLite +
-``config.yaml`` that the ``caption_quality.py`` CLI can score out of the box.
+Loads LingoQA (Marcu et al., "LingoQA", ECCV 2024, arXiv:2312.14115) via the
+HuggingFace `datasets` loader and writes a captions SQLite + config.yaml. Each
+question has two human answers, loaded as the reference and prediction model --
+a real human-vs-human baseline that needs no model, video, or API key (`nlg`).
 
-Each LingoQA eval question carries two independent human answers; we load them
-as the reference model and the prediction model, i.e. a real human-vs-human
-agreement baseline. So the demo uses 100%% real public text and needs no model
-inference, no video, and no API key (for the ``nlg`` metric).
-
-Data is pulled from a community Hugging Face mirror of the official split
-(which Wayve distributes via Google Drive); pass ``--hf-repo`` to use another.
-
-    python evaluations/caption_quality/make_lingoqa_starter.py --out ./lingoqa_starter --limit 100
-    python evaluations/caption_quality/caption_quality.py \
-        ./lingoqa_starter/config.yaml ./lingoqa_starter/out.md \
-        --reference-model lingoqa_human_a --prediction-model lingoqa_human_b --metrics nlg
+    python evaluations/caption_quality/make_lingoqa_starter.py --out ./lingoqa_starter
 """
 from __future__ import annotations
 
 import argparse
 import sqlite3
+from collections import defaultdict
 from pathlib import Path
 
-REF_MODEL = "lingoqa_human_a"
-PRED_MODEL = "lingoqa_human_b"
-DATA_SOURCE = "lingoqa_val"
+REF, PRED = "lingoqa_human_a", "lingoqa_human_b"
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", type=Path, default=Path("lingoqa_starter"))
-    ap.add_argument("--limit", type=int, default=100,
-                    help="number of questions (clips) to include")
-    ap.add_argument("--hf-repo", default="wyddmw/lingoqa-val",
-                    help="HF dataset repo holding val.parquet (LingoQA val mirror)")
-    ap.add_argument("--hf-file", default="val.parquet")
+    ap.add_argument("--limit", type=int, default=100, help="questions (clips) to include")
+    ap.add_argument("--hf-repo", default="wyddmw/lingoqa-val", help="HF dataset (LingoQA val mirror)")
     args = ap.parse_args(argv)
 
-    from huggingface_hub import hf_hub_download
-    import pandas as pd
+    from datasets import load_dataset
 
-    path = hf_hub_download(args.hf_repo, args.hf_file, repo_type="dataset")
-    df = pd.read_parquet(path, columns=["question_id", "segment_id", "question", "answer"])
+    ds = load_dataset(args.hf_repo, split="validation")
+    by_q: dict[str, list[str]] = defaultdict(list)
+    for qid, ans in zip(ds["question_id"], ds["answer"]):
+        by_q[qid].append(ans)
 
-    out = args.out
-    out.mkdir(parents=True, exist_ok=True)
-    db = out / "captions.db"
-    if db.exists():
-        db.unlink()
+    args.out.mkdir(parents=True, exist_ok=True)
+    db = args.out / "captions.db"
+    db.unlink(missing_ok=True)
     con = sqlite3.connect(db)
-    con.execute(
-        "CREATE TABLE captions(uid INTEGER PRIMARY KEY, clip_id TEXT NOT NULL, "
-        "model_name TEXT NOT NULL, caption TEXT NOT NULL, data_source TEXT, "
-        "start_time REAL, end_time REAL)"
-    )
-    rows, n = [], 0
-    for qid, g in df.groupby("question_id"):
-        answers = g["answer"].tolist()
-        if len(answers) < 2:  # need two human answers to form (reference, prediction)
-            continue
-        rows.append((qid, REF_MODEL, answers[0], DATA_SOURCE))
-        rows.append((qid, PRED_MODEL, answers[1], DATA_SOURCE))
-        n += 1
-        if n >= args.limit:
-            break
+    con.execute("CREATE TABLE captions(uid INTEGER PRIMARY KEY, clip_id TEXT, model_name TEXT, "
+                "caption TEXT, data_source TEXT, start_time REAL, end_time REAL)")
+    pairs = [(q, a) for q, a in by_q.items() if len(a) >= 2][: args.limit]
     con.executemany(
         "INSERT INTO captions(clip_id, model_name, caption, data_source) VALUES (?,?,?,?)",
-        rows,
+        [row for q, a in pairs for row in
+         ((q, REF, a[0], "lingoqa_val"), (q, PRED, a[1], "lingoqa_val"))],
     )
     con.commit()
     con.close()
-
-    (out / "config.yaml").write_text(f"datastores:\n  captions_db: {db.resolve()}\n")
-    print(f"wrote {db} ({n} questions x 2 human answers) and {out/'config.yaml'}")
-    print("\nrun the eval:")
-    print("  python evaluations/caption_quality/caption_quality.py \\")
-    print(f"      {out/'config.yaml'} {out/'out.md'} \\")
-    print(f"      --reference-model {REF_MODEL} --prediction-model {PRED_MODEL} --metrics nlg")
+    (args.out / "config.yaml").write_text(f"datastores:\n  captions_db: {db.resolve()}\n")
+    print(f"wrote {db} ({len(pairs)} questions x 2 human answers) + config.yaml\n"
+          f"run: python evaluations/caption_quality/caption_quality.py "
+          f"{args.out}/config.yaml {args.out}/out.md "
+          f"--reference-model {REF} --prediction-model {PRED} --metrics nlg")
     return 0
 
 
