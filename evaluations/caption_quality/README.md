@@ -1,6 +1,6 @@
 # Caption Quality Evaluation
 
-Evaluate model-generated captions against human annotations and (optionally) the source video. CLI: [`caption_quality.py`](caption_quality.py). Implementations: `metrics.py`, `judges.py`, `evqa.py` (registry in `scorers.py`, reporting in `reporting.py`). Run from the repo root so the sibling modules and `sil_wheel` both import.
+Evaluate model-generated captions against human annotations and (optionally) the source video. Run from the repo root so the sibling modules and `sil_wheel` both import properly.
 
 ## Setup
 
@@ -13,7 +13,7 @@ export NV_INFERENCE_API_KEY=...                    # required for llm_judge / vl
 
 ## Quickstart
 
-No data of your own yet? `make_lingoqa_starter.py` pulls the public **LingoQA** validation split (Marcu et al., ECCV 2024, [arXiv:2312.14115](https://arxiv.org/abs/2312.14115)) via the HuggingFace `datasets` loader and writes a ready-to-score captions DB + `config.yaml`. Each LingoQA question carries two human answers, loaded as the reference and prediction model — a real human-vs-human agreement baseline, with no model inference, video, or API key needed (for `nlg`).
+No data of your own yet? `make_lingoqa_starter.py` pulls the public **LingoQA** validation split (Marcu et al., ECCV 2024, [arXiv:2312.14115](https://arxiv.org/abs/2312.14115)) via the HuggingFace `datasets` loader and writes a ready-to-score captions DB + `config.yaml`. Each LingoQA question carries two human answers, loaded as the reference and prediction model.
 
 ```sh
 pip install datasets
@@ -24,13 +24,13 @@ python evaluations/caption_quality/caption_quality.py \
     --metrics nlg
 ```
 
-Add `bertscore` (downloads DeBERTa) or `llm_judge` (needs `NV_INFERENCE_API_KEY`) to `--metrics`. `lingojudge` runs too, but note this caption-centric CLI frames every pair with a generic question rather than LingoQA's per-item question.
+Add `bertscore` (downloads DeBERTa), `lingojudge` (downloads the Lingo-Judge model — scored against each item's real LingoQA question), or `llm_judge` (needs `NV_INFERENCE_API_KEY`) to `--metrics`.
 
 ## Reference modes
 
-**Captions vs captions** (`--reference-model <model_name>`) — joins the captions SQLite DB on `clip_id`, with one `model_name` as reference and another as prediction. Useful for relative model comparison.
+**Captions vs captions** (`--reference-model <model_name>`): joins the captions SQLite DB on `clip_id`, with one `model_name` as reference and another as prediction. Useful for relative model comparison.
 
-**Human annotations** (`--reference-model human`) — pulls reference text from the annotations DB one scenario at a time. Emits one row per `(clip, scenario)` pair; aggregation groups by scenario.
+**Human annotations** (`--reference-model human`): pulls reference text from the annotations DB one scenario at a time. Emits one row per `(clip, scenario)` pair; aggregation groups by scenario.
 
 Scenarios are either explicit (`--scenarios "Roadwork" --scenarios "U-turn"`) or auto-selected (`--num-scenarios`, default 20): `select_scenarios()` ranks by `(n_versions, n_pred_clips)` and stratified-samples by clip count so the chosen set spans common and rare. `--annotation-project` (default `Alpamayo`) scopes the labels; empty string merges all projects. A denylist drops automation-emitted keys (`vlm_distill_*`, `reason_*`, `distill_*`, `scenario_*`).
 

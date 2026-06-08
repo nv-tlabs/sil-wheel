@@ -44,20 +44,25 @@ def main(argv=None) -> int:
 
     ds = load_dataset(args.hf_repo, split="validation")
     by_q: dict[str, list[str]] = defaultdict(list)
-    for qid, ans in zip(ds["question_id"], ds["answer"]):
+    question: dict[str, str] = {}
+    for qid, q, ans in zip(ds["question_id"], ds["question"], ds["answer"]):
         by_q[qid].append(ans)
+        question.setdefault(qid, q)
 
     args.out.mkdir(parents=True, exist_ok=True)
     db = args.out / "captions.db"
     db.unlink(missing_ok=True)
     con = sqlite3.connect(db)
+    # `question` holds LingoQA's per-item question so the lingojudge metric scores
+    # against the real question rather than a generic one.
     con.execute("CREATE TABLE captions(uid INTEGER PRIMARY KEY, clip_id TEXT, model_name TEXT, "
-                "caption TEXT, data_source TEXT, start_time REAL, end_time REAL)")
-    pairs = [(q, a) for q, a in by_q.items() if len(a) >= 2][: args.limit]
+                "caption TEXT, data_source TEXT, question TEXT, start_time REAL, end_time REAL)")
+    pairs = [(qid, a) for qid, a in by_q.items() if len(a) >= 2][: args.limit]
     con.executemany(
-        "INSERT INTO captions(clip_id, model_name, caption, data_source) VALUES (?,?,?,?)",
-        [row for q, a in pairs for row in
-         ((q, REF, a[0], "lingoqa_val"), (q, PRED, a[1], "lingoqa_val"))],
+        "INSERT INTO captions(clip_id, model_name, caption, data_source, question) VALUES (?,?,?,?,?)",
+        [row for qid, a in pairs for row in
+         ((qid, REF, a[0], "lingoqa_val", question[qid]),
+          (qid, PRED, a[1], "lingoqa_val", question[qid]))],
     )
     con.commit()
     con.close()

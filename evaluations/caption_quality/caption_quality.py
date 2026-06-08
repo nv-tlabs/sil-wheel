@@ -209,9 +209,16 @@ def _load_caption_pairs(
     captions_db, reference_model, prediction_model, data_source, num_samples, seed,
 ):
     store = FTSCaptionStore(captions_db)
-    sql = """
+    # Carry a per-item question when the captions table has one (e.g. a QA
+    # dataset like LingoQA), so question-aware metrics (lingojudge) use it
+    # instead of a generic framing. Optional -- absent on plain caption corpora.
+    has_question = any(
+        c[1] == "question" for c in store.conn.execute("PRAGMA table_info(captions)")
+    )
+    q_select = ", r.question AS question" if has_question else ""
+    sql = f"""
         SELECT r.clip_id, r.caption AS reference, p.caption AS prediction,
-               r.data_source AS data_source
+               r.data_source AS data_source{q_select}
         FROM captions r
         JOIN captions p
           ON p.clip_id = r.clip_id
@@ -233,6 +240,7 @@ def _load_caption_pairs(
             "reference": row["reference"],
             "prediction": row["prediction"],
             "data_source": row["data_source"] or "unknown",
+            **({"question": row["question"]} if has_question else {}),
         }
         for row in rows
         if row["reference"] and row["prediction"]

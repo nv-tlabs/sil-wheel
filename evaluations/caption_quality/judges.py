@@ -202,7 +202,9 @@ def score_llm_judge(
 
 LINGO_JUDGE_MODEL = "wayveai/Lingo-Judge"
 
-# Frames caption-vs-caption as the QA format LingoJudge was trained on.
+# Default question used only when a pair carries no per-item question
+# (caption-vs-caption / human modes). Lingo-Judge was trained on
+# (question, answer, prediction) triples, so a pair's own question is preferred.
 LINGO_JUDGE_QUESTION = "Describe what is happening in this driving video."
 
 
@@ -210,8 +212,9 @@ class LingoJudge:
     """Lingo-Judge truthfulness classifier from LingoQA (Marcu et al., "LingoQA:
     Visual Question Answering for Autonomous Driving", ECCV 2024,
     arXiv:2312.14115; code github.com/wayveai/LingoQA, model
-    huggingface.co/wayveai/Lingo-Judge). We frame each caption-vs-caption pair
-    in LingoQA's question/answer/student format. Logit > 0 means correct."""
+    huggingface.co/wayveai/Lingo-Judge). Each pair is framed in LingoQA's
+    question/answer/student format using the pair's own ``question`` when present
+    (e.g. a QA dataset), else ``default_question``. Logit > 0 means correct."""
 
     def __init__(
         self,
@@ -219,6 +222,7 @@ class LingoJudge:
         max_length: int = 512,
         batch_size: int = 16,
         pretrained_model: str = LINGO_JUDGE_MODEL,
+        default_question: str = LINGO_JUDGE_QUESTION,
     ):
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -229,6 +233,7 @@ class LingoJudge:
         self.device = device
         self.max_length = max_length
         self.batch_size = batch_size
+        self.default_question = default_question
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model, use_fast=True)
         self.model = (
             AutoModelForSequenceClassification.from_pretrained(pretrained_model)
@@ -238,10 +243,11 @@ class LingoJudge:
         self._cls = self.tokenizer.cls_token
         self._torch = torch
 
-    def _build(self, reference: str, prediction: str) -> str:
-        ref = (reference or "").lower().strip()
-        pred = (prediction or "").lower().strip()
-        return f"{self._cls}\nQuestion: {LINGO_JUDGE_QUESTION}\nAnswer: {ref}\nStudent: {pred}"
+    def _build(self, pair: Dict[str, Any]) -> str:
+        question = (pair.get("question") or self.default_question).strip()
+        ref = (pair.get("reference") or "").lower().strip()
+        pred = (pair.get("prediction") or "").lower().strip()
+        return f"{self._cls}\nQuestion: {question}\nAnswer: {ref}\nStudent: {pred}"
 
     def score_batch(self, pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
@@ -251,7 +257,7 @@ class LingoJudge:
         with torch.inference_mode():
             for start in range(0, len(pairs), self.batch_size):
                 batch = pairs[start:start + self.batch_size]
-                texts = [self._build(p["reference"], p["prediction"]) for p in batch]
+                texts = [self._build(p) for p in batch]
                 enc = self.tokenizer(
                     texts, return_tensors="pt", padding=True,
                     truncation=True, max_length=self.max_length,
@@ -274,10 +280,11 @@ class LingoJudge:
         prediction: str,
         clip_id: str = "_",
         data_source: str = "_",
+        question: Optional[str] = None,
     ) -> Dict[str, Any]:
         return self.score_batch([{
             "clip_id": clip_id, "data_source": data_source,
-            "reference": reference, "prediction": prediction,
+            "reference": reference, "prediction": prediction, "question": question,
         }])[0]
 
     def close(self):
