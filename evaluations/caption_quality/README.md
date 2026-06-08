@@ -15,6 +15,28 @@ pip install ultralytics                            # only for EVQAScore (evqa)
 export NV_INFERENCE_API_KEY=...                    # required for llm_judge / vlm_judge / evqa
 ```
 
+## Quickstart (real data: LingoQA)
+
+No data of your own yet? `make_lingoqa_starter.py` pulls the public **LingoQA**
+validation split (Marcu et al., ECCV 2024, [arXiv:2312.14115](https://arxiv.org/abs/2312.14115))
+and writes a ready-to-score captions DB + `config.yaml`. Each LingoQA question
+carries two human answers, loaded as the reference and prediction model — a real
+human-vs-human agreement baseline, with no model inference, video, or API key
+needed (for `nlg`).
+
+```bash
+pip install huggingface_hub pandas pyarrow
+python evaluations/caption_quality/make_lingoqa_starter.py --out ./lingoqa_starter --limit 100
+python evaluations/caption_quality/caption_quality.py \
+    ./lingoqa_starter/config.yaml ./lingoqa_starter/out.md \
+    --reference-model lingoqa_human_a --prediction-model lingoqa_human_b \
+    --metrics nlg
+```
+
+Add `bertscore` (downloads DeBERTa) or `llm_judge` (needs `NV_INFERENCE_API_KEY`)
+to `--metrics`. `lingojudge` runs too, but note this caption-centric CLI frames
+every pair with a generic question rather than LingoQA's per-item question.
+
 ## Reference modes
 
 **Captions vs captions** (`--reference-model <model_name>`) — joins the
