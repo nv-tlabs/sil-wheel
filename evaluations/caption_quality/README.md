@@ -83,55 +83,30 @@ video path via the annotations DB's `video_paths` table.
 `vlm_judge` reuses `judge_caption_score` from `sil_wheel.llm.vlm_judge`, so
 scores are directly comparable to the live server's VLM judge.
 
-## Usage
+## Run on your own data
 
-Human tags as reference, auto-selecting 20 Alpamayo scenarios (default):
-
-```bash
-python evaluations/caption_quality/caption_quality.py \
-    config/wheel_launch_dev_server_config.yaml \
-    caption_quality_results.md \
-    --reference-model human \
-    --prediction-model "Qwen2.5-VL-7B-Instruct" \
-    --metrics bertscore,lingojudge,llm_judge \
-    --num-samples 200
-```
-
-Pin specific scenarios:
+Point a `config.yaml` at your stores (`datastores.captions_db`, plus
+`annotations_db` for human / reference-free modes), then:
 
 ```bash
-python evaluations/caption_quality/caption_quality.py config/... results.md \
-    --reference-model human \
-    --prediction-model "Qwen2.5-VL-7B-Instruct" \
-    --scenarios "Roadwork" --scenarios "U-turn" --scenarios "VRU crossing - pedestrian" \
-    --metrics llm_judge --num-samples 60
+# Model vs model (caption-vs-caption): rank one model against a trusted one
+python evaluations/caption_quality/caption_quality.py config.yaml results.md \
+    --reference-model "<reference model_name>" \
+    --prediction-model "<prediction model_name>" \
+    --metrics nlg,bertscore,llm_judge --num-samples 200
+
+# Human annotations as reference (auto-selects 20 scenarios; rows grouped by scenario)
+python evaluations/caption_quality/caption_quality.py config.yaml results.md \
+    --reference-model human --prediction-model "<prediction model_name>" \
+    --metrics bertscore,lingojudge,llm_judge --num-samples 200
 ```
 
-Model vs model (silver standard, useful for relative ranking):
-
-```bash
-python evaluations/caption_quality/caption_quality.py \
-    config/wheel_launch_dev_server_config.yaml \
-    caption_quality_results.md \
-    --reference-model "Gemini-2.5-pro (comprehensive v3 - summary long)" \
-    --prediction-model "Qwen2.5-VL-7B-Instruct" \
-    --metrics nlg,bertscore,llm_judge \
-    --num-samples 200
-```
-
-Notable flags (see `--help` for the full list):
-
-- `--metrics` selects any subset of the names above; failing metrics are
-  logged and skipped while the rest continue.
-- `--llm-provider auto` auto-detects from `NV_INFERENCE_API_KEY` /
-  `NVIDIA_API_KEY` / `OPENAI_API_KEY`, else falls back to local.
-- `--evqa-cache-dir <dir>` enables per-video visual-feature sidecars
-  (`.pt`, ~50-200 KB each); warm runs skip SigLIP+YOLO. Server use also
-  gets an in-memory LRU automatically (`EVQAScorer(mem_cache_size=...)`).
-
-Output: one markdown section per metric. Rows are grouped by `scenario` in
-human mode (per auto-selected scenario plus an `all` row), or by
-`data_source` in caption-vs-caption mode. Numbers are means across clips.
+Pin scenarios with repeated `--scenarios "Roadwork" --scenarios "U-turn"`.
+A failing metric is logged and skipped (the rest continue); `--llm-provider auto`
+picks the provider from your API-key env vars; `--evqa-cache-dir <dir>` caches
+per-video features so warm runs skip SigLIP+YOLO. Output is one markdown section
+per metric — rows grouped by `scenario` (human mode) or `data_source`
+(caption-vs-caption), means across clips.
 
 ## References & attribution
 
