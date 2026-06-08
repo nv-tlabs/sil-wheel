@@ -24,6 +24,45 @@ Inputs you provide:
 - a SQLite **captions DB** (for TF-IDF topic labels).
 - optionally `NV_INFERENCE_API_KEY` for the LLM one-phrase titles/descriptions.
 
+## Quickstart
+
+Use the `wheel` conda env (so `python` has faiss); the driver also honours
+`PYTHON=/path/to/python` if the env isn't active.
+
+### A. Instant smoke test (synthetic — seconds, no downloads)
+
+`make_synthetic_starter.py` writes a tiny wheel-format dataset (three embeddings
++ a toy captions DB) that exercises every step. It is synthetic data to verify
+the workflow, **not** a real result.
+
+```bash
+O=./synth_starter
+python evaluations/embedding_clustering/make_synthetic_starter.py --out $O
+python evaluations/embedding_clustering/build_pool_clip_ids.py --wheel-data-dir $O/wheel-data --out $O/emb_pools
+WHEEL_DATA_DIR=$O/wheel-data CAPTIONS_DB=$O/captions.db POOLS_DIR=$O/emb_pools \
+  CLUSTER_OUT=$O/clustering POOL=full K=20 bash evaluations/embedding_clustering/run_full_cluster.sh
+python evaluations/embedding_clustering/build_fig_runs.py --runs $O/emb_pools/runs.tsv --clustering-dir $O/clustering --out $O/fig_runs.json
+python evaluations/embedding_clustering/make_umap_overview.py --clustering-dir $O/clustering --fig-runs $O/fig_runs.json --out $O/umap_overview.png
+python evaluations/embedding_clustering/make_topic_focus.py  --clustering-dir $O/clustering --fig-runs $O/fig_runs.json --out $O/topic_focus.png
+python evaluations/embedding_clustering/preindex_compare.py  --raw-npz $O/cosmos.npz --index-spec IVF16,PQ96x8 --embed cosmos --out $O/preindex_compare.json
+```
+
+### B. Real data (nuScenes mini)
+
+For real embeddings on a small public split, first build a `wheel-data` dir with
+the repo's nuScenes example (10 scenes; all modalities + FAISS indexes):
+
+```bash
+pip install -r examples/getting-started-nuscenes/requirements.txt
+python examples/getting-started-nuscenes/setup_nuscenes.py --workdir ./wheel-data --admin-password admin
+```
+
+Then run the steps below with `WHEEL_DATA_DIR=./wheel-data`, `CAPTIONS_DB` set to
+the captions DB named in `wheel-data/config.yaml`, and a small `K` (mini has only
+a few hundred clips). Pre/post needs an exact (Flat) source, which the mini
+pipeline doesn't build — use the synthetic `--raw-npz` path above, or your own
+exact vectors.
+
 ## 1. Build the clip-id pools
 ```bash
 python build_pool_clip_ids.py --wheel-data-dir "$WHEEL_DATA_DIR" --out ./emb_pools
@@ -43,9 +82,10 @@ Runs cosmos → visual → caption sequentially, logging run ids to
 `umap.json`, `cluster_topics.json`, etc.
 
 ## 3. Figures
-Copy `fig_runs.example.json` to `fig_runs.json` and fill in the run ids from
-step 2 (rows = pools, columns = embeddings).
+Build `fig_runs.json` from `runs.tsv` with `build_fig_runs.py` (or copy
+`fig_runs.example.json` and edit run ids by hand).
 ```bash
+python build_fig_runs.py --runs ./emb_pools/runs.tsv --clustering-dir ./clustering --out fig_runs.json
 python make_umap_overview.py --clustering-dir ./clustering --fig-runs fig_runs.json \
     --out umap_overview.png
 NV_INFERENCE_API_KEY=... python make_topic_focus.py --clustering-dir ./clustering \
