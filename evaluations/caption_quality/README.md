@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # Caption Quality Evaluation
 
 Evaluate model-generated captions against human annotations and (optionally) the source video. Run from the repo root so the sibling modules and `sil_wheel` both import properly.
@@ -5,10 +8,10 @@ Evaluate model-generated captions against human annotations and (optionally) the
 ## Setup
 
 ```sh
-pip install -e .                                   # the sil_wheel package
-pip install pycocoevalcap nltk rouge-score bert-score   # reference-based metrics
-pip install ultralytics                            # only for EVQAScore (evqa)
-export NV_INFERENCE_API_KEY=...                    # required for llm_judge / vlm_judge / evqa
+pip install -e .                  # the sil_wheel package
+pip install -e ".[caption-quality]"   # reference-based metrics (nlg, bertscore)
+pip install -e ".[evqa]"              # only for EVQAScore (pulls AGPL ultralytics)
+export NV_INFERENCE_API_KEY=...   # required for llm_judge / vlm_judge / evqa
 ```
 
 ## Quickstart
