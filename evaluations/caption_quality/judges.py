@@ -71,7 +71,7 @@ anything matching it.
 
 
 def _parse_match(value: Any) -> Optional[bool]:
-    """Coerce an LLM ``match`` value (bool / int / str) to bool, else None."""
+    """Coerce an LLM match value (bool / int / str) to bool, else None."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -135,9 +135,7 @@ class LLMJudge:
         user_prompt = LLM_JUDGE_TEMPLATE.format(
             reference=pair["reference"], candidate=pair["prediction"],
         )
-        # No response_format: Gemini on NV inference returns content=null
-        # under JSON mode. max_tokens is generous because Gemini-3-flash
-        # burns most of the budget on reasoning_tokens before the JSON.
+        # No response_format: Gemini on NV inference returns content=null under JSON mode. max_tokens is generous because Gemini-3-flash burns most of the budget on reasoning_tokens before the JSON.
         try:
             raw = self.client.generate(
                 prompt=user_prompt,
@@ -202,19 +200,12 @@ def score_llm_judge(
 
 LINGO_JUDGE_MODEL = "wayveai/Lingo-Judge"
 
-# Default question used only when a pair carries no per-item question
-# (caption-vs-caption / human modes). Lingo-Judge was trained on
-# (question, answer, prediction) triples, so a pair's own question is preferred.
+# Default question used only when a pair carries no per-item question (caption-vs-caption / human modes). Lingo-Judge was trained on (question, answer, prediction) triples, so a pair's own question is preferred.
 LINGO_JUDGE_QUESTION = "Describe what is happening in this driving video."
 
 
 class LingoJudge:
-    """Lingo-Judge truthfulness classifier from LingoQA (Marcu et al., "LingoQA:
-    Visual Question Answering for Autonomous Driving", ECCV 2024,
-    arXiv:2312.14115; code github.com/wayveai/LingoQA, model
-    huggingface.co/wayveai/Lingo-Judge). Each pair is framed in LingoQA's
-    question/answer/student format using the pair's own ``question`` when present
-    (e.g. a QA dataset), else ``default_question``. Logit > 0 means correct."""
+    """Lingo-Judge truthfulness classifier from LingoQA (Marcu et al., "LingoQA: Visual Question Answering for Autonomous Driving", ECCV 2024, arXiv:2312.14115; code github.com/wayveai/LingoQA, model huggingface.co/wayveai/Lingo-Judge). Each pair is framed in LingoQA's question/answer/student format using the pair's own question when present (e.g. a QA dataset), else default_question. Logit > 0 means correct."""
 
     def __init__(
         self,

@@ -76,10 +76,7 @@ def select_scenarios(
 ) -> List[str]:
     """Pick ~n scenarios prioritised by caption-version coverage, spread across clip-count quantiles.
 
-    Two-step lookup (~4s on Alpamayo): Q1 pulls top ``pool_size`` candidate
-    keys from the annotations DB; Q2 counts ``prediction_model`` clips and
-    distinct caption versions per candidate. Ranks by (n_versions,
-    n_pred_clips) then stratified-samples by ``n_clips`` for complexity diversity.
+    Two-step lookup (~4s on Alpamayo): Q1 pulls top pool_size candidate keys from the annotations DB; Q2 counts prediction_model clips and distinct caption versions per candidate. Ranks by (n_versions, n_pred_clips) then stratified-samples by n_clips for complexity diversity.
     """
     import sqlite3
 
@@ -165,9 +162,7 @@ def load_pairs(
 ) -> List[Dict[str, Any]]:
     """Load (clip, reference, prediction) rows.
 
-    ``reference_model='human'`` emits one row per ``(clip, scenario)`` from
-    the annotations DB (auto-selecting scenarios if not given). Any other
-    value joins captions vs captions on ``clip_id``.
+    reference_model='human' emits one row per (clip, scenario) from the annotations DB (auto-selecting scenarios if not given). Any other value joins captions vs captions on clip_id.
     """
     if reference_model == HUMAN_REFERENCE:
         if not annotations_db:
@@ -209,9 +204,7 @@ def _load_caption_pairs(
     captions_db, reference_model, prediction_model, data_source, num_samples, seed,
 ):
     store = FTSCaptionStore(captions_db)
-    # Carry a per-item question when the captions table has one (e.g. a QA
-    # dataset like LingoQA), so question-aware metrics (lingojudge) use it
-    # instead of a generic framing. Optional -- absent on plain caption corpora.
+    # Carry a per-item question when the captions table has one (e.g. a QA dataset like LingoQA), so question-aware metrics (lingojudge) use it instead of a generic framing. Optional -- absent on plain caption corpora.
     has_question = any(
         c[1] == "question" for c in store.conn.execute("PRAGMA table_info(captions)")
     )
@@ -259,11 +252,9 @@ def _load_human_pairs(
     captions_db, annotations_db, prediction_model, scenarios, project,
     data_source, num_samples, seed,
 ):
-    """One ``(clip, scenario)`` pair per matching annotation, balanced across scenarios.
+    """One (clip, scenario) pair per matching annotation, balanced across scenarios.
 
-    Each row has ``reference = scenario`` (single tag) and a ``scenario``
-    field for grouped aggregation. With ``num_samples`` set, each scenario
-    gets a quota of ``num_samples // len(scenarios)``.
+    Each row has reference = scenario (single tag) and a scenario field for grouped aggregation. With num_samples set, each scenario gets a quota of num_samples // len(scenarios).
     """
     import sqlite3
 

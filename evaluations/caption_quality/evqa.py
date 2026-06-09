@@ -15,20 +15,13 @@
 
 """EVQAScore: reference-free video-caption quality.
 
-Independent reimplementation of EVQAScore (Liu et al., "EVQAScore: A
-Fine-grained Metric for Video Question Answering Data Quality Evaluation",
-arXiv:2411.06908), which itself builds on EMScore (Shi et al., CVPR 2022). This
-is NOT the authors' original code.
+Implementation of EVQAScore (Liu et al., "EVQAScore: A Fine-grained Metric for Video Question Answering Data Quality Evaluation", arXiv:2411.06908), which itself builds on EMScore (Shi et al., CVPR 2022).
 
-Coarse score (global frame <-> caption) + fine score (YOLO crops <-> LLM
-keywords), combined via bidirectional max-matching + harmonic mean.
+Coarse score (global frame <-> caption) + fine score (YOLO crops <-> LLM keywords), combined via bidirectional max-matching + harmonic mean.
 
-Third-party components are downloaded/installed at runtime, each under its own
-license (review before redistribution):
-  * visual encoder: SigLIP (google/siglip-so400m-patch14-384) or CLIP
-    (openai/clip-vit-large-patch14);
-  * object crops: Ultralytics YOLO11 (``ultralytics``) -- **AGPL-3.0**; gated
-    behind the optional ``[evqa]`` extra and never bundled or distributed here.
+Third-party components are downloaded/installed at runtime, each under its own license
+  * visual encoder: SigLIP (google/siglip-so400m-patch14-384) or CLIP (openai/clip-vit-large-patch14);
+  * object crops: Ultralytics YOLO11 (ultralytics) -- AGPL-3.0; gated behind the optional [evqa] extra and never bundled or distributed here.
 """
 import gc
 import hashlib
@@ -126,9 +119,8 @@ def _sample_frames(video_path: str, interval: int) -> List[np.ndarray]:
 class EVQAScorer:
     """EVQAScore reference-free scorer holding encoder + YOLO + keyword LLM client.
 
-    Loads heavy resources once; ``score_batch`` deduplicates by ``video_path``.
-    Visual features are cached in-memory (LRU) and optionally on-disk via
-    ``cache_dir`` so repeat runs skip SigLIP+YOLO.
+    Loads heavy resources once; score_batch deduplicates by video_path.
+    Visual features are cached in-memory (LRU) and optionally on-disk via cache_dir so repeat runs skip SigLIP+YOLO.
     """
 
     SCORE_DIMS = ("evqa_coarse", "evqa_fine", "evqa_score")
@@ -178,8 +170,7 @@ class EVQAScorer:
             kwargs["model"] = keyword_model
         self.keyword_client = get_llm_client(provider=keyword_provider, **kwargs)
 
-        # In-memory LRU → on-disk sidecar → recompute. Tag in the filename
-        # invalidates on encoder/interval change (cf. visual_embeddings_store).
+        # In-memory LRU → on-disk sidecar → recompute. Tag in the filename invalidates on encoder/interval change (cf. visual_embeddings_store).
         self._cache_tag = f"{backend}_i{frame_interval}"
         self._mem_cache: "OrderedDict[str, Dict[str, torch.Tensor]]" = OrderedDict()
         self._mem_cache_size = mem_cache_size

@@ -15,9 +15,7 @@
 
 """NLG (BLEU/ROUGE/METEOR/CIDEr), BERTScore, and reference-free VLM judge.
 
-A pair is ``{"clip_id", "reference", "prediction", "data_source",
-"video_path" (vlm_judge only)}``. Each scorer exposes ``score_batch(pairs)``,
-``score_one(...)``, and (where applicable) ``close()``.
+A pair is {"clip_id", "reference", "prediction", "data_source", "video_path" (vlm_judge only)}. Each scorer exposes score_batch(pairs), score_one(...), and (where applicable) close().
 """
 import logging
 import os
@@ -41,17 +39,12 @@ def _row(pair: Dict[str, Any], **scores: float) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 class NLGScorer:
-    """BLEU-4 / ROUGE-1/2/L / METEOR / CIDEr per pair, computed via pycocoevalcap
-    (BLEU, CIDEr), google-research rouge_score, and NLTK (METEOR). Metrics:
-    BLEU (Papineni et al. 2002), ROUGE (Lin 2004), METEOR (Banerjee & Lavie
-    2005), CIDEr (Vedantam et al. 2015). CIDEr uses TF-IDF over the batch, so
-    small batches degrade to ~0."""
+    """BLEU-4 / ROUGE-1/2/L / METEOR / CIDEr per pair, computed via pycocoevalcap (BLEU, CIDEr), google-research rouge_score, and NLTK (METEOR). Metrics: BLEU (Papineni et al. 2002), ROUGE (Lin 2004), METEOR (Banerjee & Lavie 2005), CIDEr (Vedantam et al. 2015). CIDEr uses TF-IDF over the batch, so small batches degrade to ~0."""
 
     SCORE_DIMS = ("bleu4", "rouge1_f", "rouge2_f", "rougeL_f", "meteor", "cider")
 
     def __init__(self):
-        # Lazy imports keep pycocoevalcap / nltk out of the import path for
-        # callers who only need other scorers.
+        # Lazy imports keep pycocoevalcap / nltk out of the import path for callers who only need other scorers.
         from pycocoevalcap.bleu.bleu import Bleu
         from pycocoevalcap.cider.cider import Cider
         from rouge_score import rouge_scorer
@@ -126,9 +119,7 @@ def score_nlg(pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 class BERTScorer:
-    """BERTScore P / R / F1 (Zhang et al., "BERTScore: Evaluating Text
-    Generation with BERT", ICLR 2020; via the bert_score package), holding the
-    HF model (default microsoft/deberta-xlarge-mnli) across calls."""
+    """BERTScore P / R / F1 (Zhang et al., "BERTScore: Evaluating Text Generation with BERT", ICLR 2020; via the bert_score package), holding the HF model (default microsoft/deberta-xlarge-mnli) across calls."""
 
     SCORE_DIMS = ("bert_precision", "bert_recall", "bert_f1")
 
@@ -206,11 +197,7 @@ def score_bertscore(
 class VLMJudgeScorer:
     """Reference-free VLM scorer over (video_path, caption) pairs.
 
-    Decodes video, samples frames at ``fps`` / ``max_frames``, sends frames +
-    caption to the VLM, returns 5 attributes (1-10 each): ``scene``,
-    ``action``, ``road_entities``, ``temporal``, ``overall``. Distinct from
-    ``sil_wheel.llm.vlm_judge.VLMJudge`` (the live server judge); this is the
-    eval-side variant that takes pre-resolved local video paths.
+    Decodes video, samples frames at fps / max_frames, sends frames + caption to the VLM, returns 5 attributes (1-10 each): scene, action, road_entities, temporal, overall. Distinct from sil_wheel.llm.vlm_judge.VLMJudge (the live server judge); this is the eval-side variant that takes pre-resolved local video paths.
     """
 
     SCORE_DIMS = ("scene", "action", "road_entities", "temporal", "overall")

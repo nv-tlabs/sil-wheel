@@ -16,10 +16,7 @@
 
 """Build a runnable caption-quality starter from the public LingoQA val split.
 
-Loads LingoQA (Marcu et al., "LingoQA", ECCV 2024, arXiv:2312.14115) via the
-HuggingFace `datasets` loader and writes a captions SQLite + config.yaml. Each
-question has two human answers, loaded as the reference and prediction model --
-a real human-vs-human baseline that needs no model, video, or API key (`nlg`).
+Loads LingoQA (Marcu et al., "LingoQA", ECCV 2024, arXiv:2312.14115) via the HuggingFace `datasets` loader and writes a captions SQLite + config.yaml. Each question has two human answers, loaded as the reference and prediction model -- a real human-vs-human baseline that needs no model, video, or API key (`nlg`).
 
     python evaluations/caption_quality/example_starter_lingoqa.py --out ./lingoqa_starter
 """
@@ -53,8 +50,7 @@ def main(argv=None) -> int:
     db = args.out / "captions.db"
     db.unlink(missing_ok=True)
     con = sqlite3.connect(db)
-    # `question` holds LingoQA's per-item question so the lingojudge metric scores
-    # against the real question rather than a generic one.
+    # `question` holds LingoQA's per-item question so the lingojudge metric scores against the real question rather than a generic one.
     con.execute("CREATE TABLE captions(uid INTEGER PRIMARY KEY, clip_id TEXT, model_name TEXT, "
                 "caption TEXT, data_source TEXT, question TEXT, start_time REAL, end_time REAL)")
     pairs = [(qid, a) for qid, a in by_q.items() if len(a) >= 2][: args.limit]
