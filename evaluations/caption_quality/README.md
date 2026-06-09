@@ -24,9 +24,9 @@ python evaluations/caption_quality/caption_quality.py \
     --metrics nlg
 ```
 
-Add `bertscore` (downloads DeBERTa), `lingojudge` (downloads the Lingo-Judge model — scored against each item's real LingoQA question), or `llm_judge` (needs `NV_INFERENCE_API_KEY`) to `--metrics`.
+Add `bertscore` (downloads DeBERTa), `lingojudge` (downloads the Lingo-Judge model, scored against each item's real LingoQA question), or `llm_judge` (needs `NV_INFERENCE_API_KEY`) to `--metrics`.
 
-## Reference modes
+## Reference-based Metrics
 
 **Captions vs captions** (`--reference-model <model_name>`): joins the captions SQLite DB on `clip_id`, with one `model_name` as reference and another as prediction. Useful for relative model comparison.
 
@@ -34,7 +34,7 @@ Add `bertscore` (downloads DeBERTa), `lingojudge` (downloads the Lingo-Judge mod
 
 Scenarios are either explicit (`--scenarios "Roadwork" --scenarios "U-turn"`) or auto-selected (`--num-scenarios`, default 20): `select_scenarios()` ranks by `(n_versions, n_pred_clips)` and stratified-samples by clip count so the chosen set spans common and rare. `--annotation-project` (default `Alpamayo`) scopes the labels; empty string merges all projects. A denylist drops automation-emitted keys (`vlm_distill_*`, `reason_*`, `distill_*`, `scenario_*`).
 
-Annotation keys are short tags, so n-gram metrics (BLEU / ROUGE / CIDEr / METEOR) will be near zero against long captions. **BERTScore, LingoJudge, and LLM judge are the right metrics in human mode.**
+Annotation keys are short tags, so n-gram metrics (BLEU / ROUGE / CIDEr / METEOR) will be near zero against long captions. **BERTScore, LingoJudge, and LLM judge are the right metrics to focus on in human mode.**
 
 Reference-free metrics (`vlm_judge`, `evqa`) additionally resolve a local video path via the annotations DB's `video_paths` table.
 
