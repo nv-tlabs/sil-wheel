@@ -20,7 +20,7 @@ Reference-free:  ``vlm_judge``, ``evqa`` (gated behind ``[evqa]`` extra).
 
 Usage::
 
-    python evaluations/caption_quality/caption_quality.py \\
+    python evaluations/caption_quality/run_caption_eval.py \\
         config/wheel_launch_dev_server_config.yaml \\
         caption_quality_results.md \\
         --reference-model human \\

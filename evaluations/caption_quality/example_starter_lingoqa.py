@@ -21,7 +21,7 @@ HuggingFace `datasets` loader and writes a captions SQLite + config.yaml. Each
 question has two human answers, loaded as the reference and prediction model --
 a real human-vs-human baseline that needs no model, video, or API key (`nlg`).
 
-    python evaluations/caption_quality/make_lingoqa_starter.py --out ./lingoqa_starter
+    python evaluations/caption_quality/example_starter_lingoqa.py --out ./lingoqa_starter
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def main(argv=None) -> int:
     con.close()
     (args.out / "config.yaml").write_text(f"datastores:\n  captions_db: {db.resolve()}\n")
     print(f"wrote {db} ({len(pairs)} questions x 2 human answers) + config.yaml\n"
-          f"run: python evaluations/caption_quality/caption_quality.py "
+          f"run: python evaluations/caption_quality/run_caption_eval.py "
           f"{args.out}/config.yaml {args.out}/out.md "
           f"--reference-model {REF} --prediction-model {PRED} --metrics nlg")
     return 0

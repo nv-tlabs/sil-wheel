@@ -15,7 +15,7 @@
 
 import pytest
 
-from caption_quality import aggregate_scores, render_metric_table
+from run_caption_eval import aggregate_scores, render_metric_table
 
 
 def test_aggregate_groups_and_overall():

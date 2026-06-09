@@ -17,7 +17,7 @@ import sqlite3
 
 import pytest
 
-from caption_quality import load_pairs
+from run_caption_eval import load_pairs
 
 
 def _make_captions_db(path, with_question=False):
