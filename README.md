@@ -96,6 +96,17 @@ python scripts/launch_server.py config/wheel_launch_dev_server_config.yaml
 Open the bind address printed at startup (defaults to the
 `server.bindto` value in the YAML) in a browser.
 
+### Start from a Dataset
+
+We provide two example scripts to help you process a dataset and launch a
+SIL-Wheel server. Each script downloads the data, extracts captions and
+embeddings, and starts SIL-Wheel so you can try the full pipeline end to end.
+
+Choose one of the following datasets:
+
+- [nuScenes](examples/getting-started-nuscenes/README.md), via `setup_nuscenes.py`
+- [Physical AI Autonomous Vehicles](examples/getting-started-physical-ai-autonomous-vehicles/README.md), via `setup_physical_ai.py`
+
 ## Programmatic Access
 
 Wheel can also be used directly from Python. It provides two clients:
