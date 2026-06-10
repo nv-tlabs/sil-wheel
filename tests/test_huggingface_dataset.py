@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the HuggingFaceDataset reader."""
+"""Tests for the HuggingFaceTarDataset reader."""
 import io
 import json
 import tarfile
@@ -21,7 +21,7 @@ import tarfile
 import pytest
 
 from sil_wheel.datasets import base_dataset
-from sil_wheel.datasets.base_dataset import HuggingFaceDataset
+from sil_wheel.datasets.base_dataset import HuggingFaceTarDataset
 
 
 def _make_tar(tar_path, clip_ids):
@@ -59,7 +59,7 @@ def test_build_manifest_scans_given_shards(tmp_path):
     _make_tar(tmp_path / "shard_b.tar", ["video_B1"])
     out_path = tmp_path / "manifest.json"
 
-    HuggingFaceDataset._build_manifest(
+    HuggingFaceTarDataset._build_manifest(
         [tmp_path / "shard_a.tar", tmp_path / "shard_b.tar"], out_path
     )
 
@@ -78,7 +78,7 @@ def test_iteration_yields_video_bytes(synthetic_repo, monkeypatch):
         base_dataset, "snapshot_download", lambda **kw: str(local_dir)
     )
 
-    dataset = HuggingFaceDataset(
+    dataset = HuggingFaceTarDataset(
         process_id=0,
         n_processes=1,
         repo_id="dummy/repo",
@@ -109,11 +109,11 @@ def test_per_process_sharding_disjoint(synthetic_repo, monkeypatch):
 
     monkeypatch.setattr(base_dataset, "snapshot_download", fake_snapshot)
 
-    ds0 = HuggingFaceDataset(
+    ds0 = HuggingFaceTarDataset(
         process_id=0, n_processes=2,
         repo_id="dummy/repo", allow_patterns=["test/*"],
     )
-    ds1 = HuggingFaceDataset(
+    ds1 = HuggingFaceTarDataset(
         process_id=1, n_processes=2,
         repo_id="dummy/repo", allow_patterns=["test/*"],
     )
@@ -156,17 +156,17 @@ def test_matching_manifest_is_not_rebuilt(synthetic_repo, monkeypatch):
     )
 
     called = {"build": 0}
-    real_build = HuggingFaceDataset._build_manifest
+    real_build = HuggingFaceTarDataset._build_manifest
 
     def spy(tar_paths, out_path):
         called["build"] += 1
         return real_build(tar_paths, out_path)
 
     monkeypatch.setattr(
-        HuggingFaceDataset, "_build_manifest", staticmethod(spy)
+        HuggingFaceTarDataset, "_build_manifest", staticmethod(spy)
     )
 
-    HuggingFaceDataset(
+    HuggingFaceTarDataset(
         process_id=0, n_processes=1,
         repo_id="dummy/repo", allow_patterns=["test/*"],
     )
@@ -190,7 +190,7 @@ def test_stale_manifest_is_rebuilt(synthetic_repo, monkeypatch):
         base_dataset, "snapshot_download", lambda **kw: str(local_dir)
     )
 
-    HuggingFaceDataset(
+    HuggingFaceTarDataset(
         process_id=0, n_processes=1,
         repo_id="dummy/repo", allow_patterns=["test/*"],
     )

@@ -83,6 +83,11 @@ conda activate wheel
 python setup.py build_ext --inplace
 pip install -e .
 
+# perception_models supplies the `core` module that sil_wheel.embeddings imports
+# eagerly; without it the embedding/extraction stages crash with
+# "No module named 'core'". --no-deps so it doesn't downgrade transformers/numpy.
+pip install --no-deps git+https://github.com/facebookresearch/perception_models.git
+
 # Launch your Wheel server
 # This assumes the artifacts referenced in the YAML already exist.
 python scripts/launch_server.py config/wheel_launch_dev_server_config.yaml
@@ -188,20 +193,6 @@ hf auth login
 `flash-attn` has compatibility issues with CUDA 13.0 + PyTorch 2.10.
 We recommend skipping it; PyTorch's fallback is slightly slower but
 fine for debugging.
-
-PE-Core (`pe_core_*` embedding types in
-`extract_video_text_embeddings.py`) needs Meta's
-[`perception_models`](https://github.com/facebookresearch/perception_models)
-package. Install it **after** the conda environment is set up, and
-with `--no-deps` so it does not downgrade `transformers` or other
-packages already installed by the conda environment:
-
-```bash
-pip install --no-deps git+https://github.com/facebookresearch/perception_models.git
-```
-
-Skip this step if you don't plan to extract or evaluate `pe_core_*`
-embeddings.
 
 ## QuickStart with SIL-Wheel
 

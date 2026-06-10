@@ -81,8 +81,7 @@ class SearchPipeline:
             results = self.metricstore.search(filters, results)
         if self.bev_fetcher is not None:
             results = self.bev_fetcher.search(filters, results)
-        if self.wm_store is not None:
-            results = self.wm_store.search(filters, results)
+        results = self.wm_store.search(filters, results)
         results = self.trajectorystore.search(filters, results)
         results = self.clipembeddingsstore.search(filters, results)
         results = self.captionstore.search(filters, results)

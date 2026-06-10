@@ -441,6 +441,7 @@ class Florence2SigCLIPEmbeddingStore:
         nprobe=256,
         text_prompt_template="a photo of {text}",
         mmap=False,
+        siglip_model="google/siglip2-base-patch16-224",
     ):
         self.lock = Lock()
         self.features_index = None
@@ -495,10 +496,10 @@ class Florence2SigCLIPEmbeddingStore:
         #self._device = torch.device("cuda:0")
         self._device = torch.device("cpu")
         self.siglip_model = AutoModel.from_pretrained(
-            "google/siglip-base-patch16-224"
+            siglip_model
         ).to(self._device)
         self.siglip_processor = AutoProcessor.from_pretrained(
-            "google/siglip-base-patch16-224"
+            siglip_model
         )
         self.siglip_model.eval()
 

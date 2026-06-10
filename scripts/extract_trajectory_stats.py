@@ -92,6 +92,16 @@ def compute_curvature(x, y, ts):
 
 
 def get_trajectory_data(path_to_recordings):
+    """Load an ego trajectory and the camera frame timestamps for a recording.
+
+    Args:
+        path_to_recordings (str): Path to the recording.
+
+    Returns:
+        Tuple (x, y, z, ts, frame_ts) of np.arrays (locations in meters, ego
+        timestamps and frame timestamps in seconds), or None if no
+        egomotion_estimate.parquet is found, or it is empty or unreadable.
+    """
     path_to_frame_ts = path_to_recordings + ".timestamps"
     with open(path_to_frame_ts, "r") as f:
         frame_ts = f.readlines()
@@ -125,18 +135,20 @@ def get_trajectory_data(path_to_recordings):
 
 def get_trajectory_data_from_vipe_poses(path_to_recordings):
     """Load VIPE camera-to-world poses and extract the ego trajectory.
-
-    The .npz contains:
-      - 'data': (N, 4, 4) camera-to-world transforms, X_w = R @ X_c + t,
-        with R = c2w[:, :3, :3] and t = c2w[:, :3, 3]
-      - 'inds': (N,) frame indices for each pose
-
     VIPE produces one pose per video frame at a fixed 30 fps, so the
     pose timestamps and the frame timestamps are in sync; both are
     returned as the same evenly spaced array.
 
-    Returned x/y/z are in VIPE camera convention (x->right, y->down,
-    z->forward). The caller rotates them into the Alpamayo convention.
+    Args:
+        path_to_recordings (str): Path to the recording, that is an npz
+        file that contains
+            - data: (N, 4, 4) camera-to-world transforms, X_w = R @ X_c + t,
+              with R = c2w[:, :3, :3] and t = c2w[:, :3, 3]
+            - inds: (N,) frame indices for each pose
+
+    Returns:
+        Tuple (x, y, z) in VIPE camera convention (x->right, y->down,
+        z->forward).
     """
     npz = np.load(path_to_recordings)
     cam2world = npz["data"].astype(np.float64)
@@ -158,13 +170,27 @@ def get_trajectory_data_from_vipe_poses(path_to_recordings):
 
 
 def get_trajectory_data_clipgt(path_to_recordings):
+    """Load an ego trajectory and the camera frame timestamps for a recording.
+
+    Args:
+        path_to_recordings (Path): Path to the clip's .mp4 recording.
+
+    Returns:
+        Tuple (x, y, z, ts, frame_ts) of np.arrays (locations in meters, ego
+        timestamps and frame timestamps in seconds), or None if no
+        egomotion_estimate.parquet is found, or it is empty or unreadable.
+    """
     path_to_frame_ts = str(path_to_recordings).replace(".mp4", ".timestamps")
     with open(path_to_frame_ts, "r") as f:
         frame_ts = f.readlines()
-    frame_ts = np.array([int(ts.strip().split("\t")[-1]) for ts in frame_ts]) / 1e6
+    frame_ts = np.array(
+        [int(ts.strip().split("\t")[-1]) for ts in frame_ts]
+    ) / 1e6
 
     base_dir_to_ego_data = path_to_recordings.parent
-    path_to_ego = list(base_dir_to_ego_data.rglob("egomotion_estimate.parquet"))
+    path_to_ego = list(
+        base_dir_to_ego_data.rglob("egomotion_estimate.parquet")
+    )
     if len(path_to_ego) == 0:
         return None
 
@@ -193,9 +219,6 @@ def get_sample_from_bytes(tar_bytes: bytes) -> dict:
     """
     Get a sample from in-memory tar bytes with decoding.
 
-    This parses the tar file directly from memory without writing to disk,
-    matching the behavior of WebDataset's decode() for .npy files.
-
     Returns:
         Dictionary mapping filenames to decoded numpy arrays
     """
@@ -209,10 +232,7 @@ def get_sample_from_bytes(tar_bytes: bytes) -> dict:
                 continue
             data = f.read()
 
-            # Get the key (filename without extension for matching WebDataset behavior)
             name = member.name
-
-            # Decode .npy files (the vehicle_pose format)
             if name.endswith('.npy'):
                 sample[name[:-4]] = np.load(io.BytesIO(data))
             else:
@@ -241,6 +261,16 @@ def extract_poses_from_tar(tar) -> np.ndarray:
 
 
 def extract_timestamps(ts_path) -> np.ndarray:
+    """Read tab-delimited frame timestamps from a .timestamps file.
+
+    Args:
+        ts_path (str | Path): Path to the .timestamps file; each line ends
+            with an integer timestamp in microseconds.
+
+    Returns:
+        np.ndarray of timestamps in seconds, or None if the file does not
+        exist.
+    """
     if Path(ts_path).exists():
         with open(ts_path, "r") as f:
             lines = f.readlines()
@@ -255,6 +285,28 @@ def compute_stats_from_clip(
     data_type=None,
     vipe_trajectories=False
 ):
+    """Compute the per-frame trajectory statistics for a single clip.
+
+    Loads the ego trajectory for the given data_type (each source has its own
+    reader and axis convention) and computes speed, acceleration, jerk and
+    curvature. If the reader returns frame timestamps, the statistics are
+    interpolated onto them (one row per frame); otherwise they are returned at
+    the ego-pose timestamps.
+
+    Args:
+        path_to_recordings: Path to the clip recording or trajectory file; its
+            meaning depends on data_type.
+        data_type (str | None): Trajectory source type (e.g. "physical_ai",
+            "mads", "vipe", "waymo"); selects the reader and axis handling.
+            None uses get_trajectory_data.
+        vipe_trajectories (bool): If True, rotate VIPE camera-convention axes
+            into the viewer frame (also implied by data_type == "vipe").
+
+    Returns:
+        np.ndarray of shape (T, 7) float32 with columns
+        [x, y, z, speed, acceleration, jerk, curvature], or None if the
+        trajectory could not be loaded.
+    """
     path_to_recordings = str(path_to_recordings)
     if data_type == "clipgt":
         x, y, z, ts, frame_ts = get_trajectory_data_clipgt(
@@ -275,15 +327,48 @@ def compute_stats_from_clip(
         y = data["egomotion_estimate.location.y"].astype(np.float64)
         z = data["egomotion_estimate.location.z"].astype(np.float64)
         frame_ts = data["camera_front_left_50fov.timestamp_micros"].astype(np.float64) / 1e6
+    elif data_type == "physical_ai":
+        # Physical AI / Alpamayo egomotion.offline parquet. Columns:
+        #   timestamp -> microseconds, x/y/z -> ego location in meters, in a
+        #   right-handed FLU frame (x forward, y left, z up; verified via the
+        #   quaternion: positive yaw / a left turn moves toward +y).
+        # The offline egomotion is ~10 Hz while the camera runs at ~30 Hz, both
+        # on the same clip clock. We resample the ego trajectory onto the camera
+        # frame timestamps (read below from the .timestamps.parquet file written
+        # next to this one) so there is one trajectory row per video frame --
+        # unlike MADS we do not treat the ego samples as frames.
+        frame_ts_path = str(path_to_recordings).replace(
+            ".egomotion.offline.parquet", ".timestamps.parquet"
+        )
+        try:
+            df = pd.read_parquet(path_to_recordings)
+            ts = df["timestamp"].astype(np.float64).to_numpy() / 1e6
+            # FLU (x forward, y left, z up) -> the viewer's frame (y right), so
+            # negate y.
+            x = df["x"].astype(np.float64).to_numpy()
+            y = -df["y"].astype(np.float64).to_numpy()
+            z = df["z"].astype(np.float64).to_numpy()
+            frame_ts = (
+                pd.read_parquet(frame_ts_path)["timestamp"]
+                .astype(np.float64).to_numpy() / 1e6
+            )
+        except (KeyError, FileNotFoundError, OSError) as e:
+            print(f"Failed to read egomotion/timestamps {path_to_recordings}: {e}")
+            return None
+        if len(ts) < 2:
+            return None
     elif data_type == "mads":
-        # For MADS data we follow the FLU convention
-        # x -> forward, y -> left and z -> upward
         df = pd.read_parquet(path_to_recordings)
         ts = df["key.timestamp"].astype(np.float64).to_numpy()
+
+        # MADS follows the FLU convention i.e.
+        # x -> forward, y -> left and z -> upward
+        # so we need to negate y, to adher to what the viewer expects
+        # (y -> right)
         x = df["egomotion_estimate.location.x"].astype(np.float64).to_numpy()
         y = -df["egomotion_estimate.location.y"].astype(np.float64).to_numpy()
         z = df["egomotion_estimate.location.z"].astype(np.float64).to_numpy()
-        # The video and pose timestamp are synchronized
+        # The video and ego pose timestamp are synchronized
         frame_ts = None
     elif data_type == "mads-1M":
         pose_tar_path = Path(path_to_recordings).parents[2] / "vehicle_pose" / f"{local_mp4.stem}.tar"
@@ -294,8 +379,10 @@ def compute_stats_from_clip(
         if poses is None:
             return None
 
-        # For MADS data we follow the FLU convention
+        # MADS follows the FLU convention i.e.
         # x -> forward, y -> left and z -> upward
+        # so we need to negate y, to adher to what the viewer expects
+        # (y -> right)
         translation = poses[:, :3, 3]
         x = translation[:, 0].astype(np.float64)
         y = -translation[:, 1].astype(np.float64)
@@ -331,7 +418,7 @@ def compute_stats_from_clip(
     if vipe_trajectories:
         # Rearranging axes from Vipe coordinates:
         #       x -> right, y -> downward, z -> forward
-        # to Alpamayo coordinates:
+        # to the viewer coordinates:
         #       x -> forward, z -> upward, y -> right
         x, y, z = z, x, -y
 
@@ -372,43 +459,57 @@ def compute_stats_from_clip(
     return stats.astype(np.float32)
 
 
+def clip_id_from_path(path, clip_id_index):
+    """Derive the clip_id used as the trajectory key from a source path."""
+    if clip_id_index == -1:
+        # Drop the suffix i.e. <clip_id>.parquet, <clip_id>.egomotion.offline.parquet
+        return Path(path).name.split(".")[0]
+    # If it's not filename, we assume it doesn't have a suffix
+    return Path(path).parts[clip_id_index]
+
+
 def get_clip_id_index_from_paths(path_to_data, bucket=None):
+    """Infer where the clip ID appears in a path and identify the dataset type.
+
+    The function handles two types of layouts:
+
+    1. File-based datasets:
+       The clip ID is encoded in the filename itself, so the returned index is -1.
+
+    2. Directory-based datasets:
+       The clip ID is one of the path components. We infer its index by comparing
+       a few input paths and finding the component that varies across clips, while
+       ignoring camera-specific path components.
+
+    Returns:
+        tuple[int, str | None]: A pair (clip_id_index, data_type) where
+        clip_id_index is either -1 for file-based datasets or the index of
+        the clip-ID path component for directory-based datasets. data_type
+        is the inferred dataset type when known.
+    """
+    # file-based sources: clip_id is the filename token (index -1)
     if bucket is not None:
         return -1, "mads-1M"
-    if str(path_to_data[0]).endswith(".parquet"):
+    first = str(path_to_data[0])
+    if first.endswith(".egomotion.offline.parquet"):
+        return -1, "physical_ai"
+    if first.endswith(".parquet"):
         return -1, "mads"
-    if str(path_to_data[0]).endswith(".npz"):
+    if first.endswith(".npz"):
         return -1, "vipe"
-    if "recordings" in str(path_to_data[0]):
-        paths_parts = [Path(p).parts for p in path_to_data[:3]]
-        cols = list(zip(*paths_parts))
 
-        # Find the index where all paths have 'recordings'
-        rec_idx = next(i for i, col in enumerate(cols) if all(x == "recordings"  for x in col))
-
-        clip_id_idx = rec_idx - 1
-        return clip_id_idx, "av_prod_v2"
-    else:
-        # We assume that all paths have the same format, if not this won't work
-        paths_parts = []
-        for clip in path_to_data[:3]:
-            parts = Path(clip).parts
-            paths_parts.append(parts)
-
-        # All indices where at least one tuple differs. If a part from the path
-        # contains the word "camera" we also ignore it.
-        diff_ind = [
-            i for i, col in enumerate(zip(*paths_parts))
-            if len(set(col)) > 1 and not any("camera" in item for item in col)
-        ]
-        # There should be a difference only on one part of the path
-        assert len(diff_ind) == 1
-        if diff_ind[0] == 11:
-            return diff_ind[0], "clip_gt"
-        elif diff_ind[0] == 12:
-            return diff_ind[0], "waymo"
-        else:
-            return diff_ind[0], None
+    # directory-based sources: clip_id is a path component
+    paths_parts = [Path(p).parts for p in path_to_data[:3]]
+    diff_ind = [
+        i for i, col in enumerate(zip(*paths_parts))
+        if len(set(col)) > 1 and not any("camera" in item for item in col)
+    ]
+    assert len(diff_ind) == 1
+    if diff_ind[0] == 11:
+        return diff_ind[0], "clip_gt"
+    elif diff_ind[0] == 12:
+        return diff_ind[0], "waymo"
+    return diff_ind[0], None
 
 
 def mads_pose_data_for_front_wide(mp4_key: str, local_mp4_path: Path):
@@ -502,7 +603,7 @@ if __name__ == "__main__":
     video_paths = sorted(set([Path(ci.strip()) for ci in video_paths]))
     print(f"Loading {len(video_paths)} files")
 
-    # Get only the slicee of data we will be processing.
+    # Get only the slice of data we will be processing.
     start = args.start or 0
     video_paths = video_paths[start:args.end]
 
@@ -523,16 +624,10 @@ if __name__ == "__main__":
     processed = set(processed)
     print(f"Skipping {len(processed)} clips out of the {len(video_paths)}")
 
-    if clip_id_index == -1:
-        video_paths = [
-            p for p in video_paths
-            if Path(p).stem not in processed
-        ]
-    else:
-        video_paths = [
-            p for p in video_paths
-            if p.parts[clip_id_index] not in processed
-        ]
+    video_paths = [
+        p for p in video_paths
+        if clip_id_from_path(p, clip_id_index) not in processed
+    ]
     print(f"Computing the trajectories for {len(video_paths)} video clips")
 
     # Load the data corresponding to this output
@@ -545,14 +640,16 @@ if __name__ == "__main__":
     save_every = 1000
     skipped = 0
     update_processed_every = 1000000
+    # If trajectory data are fetched from S3
     if args.bucket:
         fetcher = S3ObjectFetcher(
             bucket=args.bucket,
             profile=args.profile,
             endpoint=args.endpoint
         )
-        with tempfile.TemporaryDirectory(prefix="s3_mads_traj_") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="s3_traj_") as tmpdir:
             tmpdir_path = Path(tmpdir)
+            # Stream each clip from S3 into the temp dir
             for i, local_mp4 in tqdm(
                 enumerate(fetcher.stream_downloads(
                     video_paths,
@@ -562,7 +659,7 @@ if __name__ == "__main__":
                     also_download=mads_pose_data_for_front_wide
                 )),
                 total=len(video_paths),
-                desc=f"Downloading + processing {len(video_paths)} from s3://{args.bucket}",
+                desc=f"Downloading {len(video_paths)} from s3://{args.bucket}",
             ):
                 local_mp4 = Path(local_mp4)
                 clip = local_mp4.stem
@@ -570,7 +667,9 @@ if __name__ == "__main__":
                     skipped += 1
                     continue
 
-                stats = compute_stats_from_clip(local_mp4, data_type, args.vipe_trajectories)
+                stats = compute_stats_from_clip(
+                    local_mp4, data_type, args.vipe_trajectories
+                )
                 if stats is None:
                     continue
 
@@ -581,8 +680,9 @@ if __name__ == "__main__":
                     save_file(all_stats, output_file)
                     print(f"Saving {len(all_stats)}")
     else:
+        # If trajectory data are stored locally
         for i, clip_to_path in tqdm(enumerate(video_paths)):
-            clip = clip_to_path.parts[clip_id_index]
+            clip = clip_id_from_path(clip_to_path, clip_id_index)
             if clip in processed:
                 skipped += 1
                 continue
@@ -601,7 +701,9 @@ if __name__ == "__main__":
                 print(f"Saving {len(all_stats)}")
 
             if i % update_processed_every == 0 and i > 0:
-                path_to_safetensors = sorted(Path(args.path_to_output).glob("*.safetensors"))
+                path_to_safetensors = sorted(
+                    Path(args.path_to_output).glob("*.safetensors")
+                )
                 processed = []
                 for pts in path_to_safetensors:
                     try:
@@ -610,7 +712,10 @@ if __name__ == "__main__":
                         print(pts)
                     processed.extend(list(sft.keys()))
                 processed = set(processed)
-                print(f"Skipping {len(processed)} clips out of the {len(video_paths)}")
+                print(
+                    f"Skipping {len(processed)} clips "
+                    f"out of the {len(video_paths)}"
+                )
 
     save_file(all_stats, output_file)
     print(f"Saved trajectory stats to {output_file}")

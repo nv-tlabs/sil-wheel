@@ -3017,6 +3017,7 @@ def main(argv=None):
             clip_embed_dir,
             index_spec=clip_embed_cfg.get("index_spec", "IVF4096,PQ64x8"),
             mmap=clip_embed_cfg.get("mmap", False),
+            siglip_model=clip_embed_cfg.get("siglip_model", "google/siglip2-base-patch16-224"),
         )
     else:
         print(f"[visual] No embeddings under {clip_embed_dir}; using empty stub (no SigLIP loaded)")

@@ -31,6 +31,12 @@ from tqdm import tqdm
 
 from torch.utils.data import DataLoader, IterableDataset, get_worker_info
 from transformers import AutoProcessor
+
+# vLLM's flashinfer top-k/top-p sampler JIT-compiles against the CUDA toolkit and fails on
+# hosts whose system nvcc is older than the wheels (e.g. CUDA 12.0); fall back to the native
+# sampler. Export VLLM_USE_FLASHINFER_SAMPLER=1 to force flashinfer on a matching toolchain.
+os.environ.setdefault("VLLM_USE_FLASHINFER_SAMPLER", "0")
+
 from vllm import LLM, SamplingParams
 from qwen_vl_utils import process_vision_info
 
