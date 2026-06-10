@@ -247,11 +247,11 @@ class S3Fetcher:
     but marks itself as disabled; requests then fail with 503 instead of
     preventing the whole server from starting.
     """
-    def __init__(self, bucket: str):
+    def __init__(self, bucket: str, endpoint: str | None = None, profile: str = "sil-wheel"):
         self.bucket = bucket
         self.client = None
         try:
-            sess = boto3.Session(profile_name="sil-wheel", region_name="us-east-1")
+            sess = boto3.Session(profile_name=profile, region_name="us-east-1")
             self.client = sess.client(
                 "s3",
                 config=Config(
@@ -259,11 +259,11 @@ class S3Fetcher:
                     read_timeout=30,
                     connect_timeout=5,
                 ),
-                endpoint_url="https://s3.example.com",
+                endpoint_url=endpoint,
             )
         except Exception as e:
             print(
-                f"[S3Fetcher] AWS profile 'sil-wheel' not configured ({e}); "
+                f"[S3Fetcher] AWS profile {profile!r} not configured ({e}); "
                 "S3 keys will 503."
             )
 
@@ -386,8 +386,8 @@ class BaseFetcher:
     knows how to construct paths for videos, BEV files, or other data.
     """
 
-    def __init__(self, bucket: str):
-        self.s3 = S3Fetcher(bucket)
+    def __init__(self, bucket: str, endpoint: str | None = None, profile: str = "sil-wheel"):
+        self.s3 = S3Fetcher(bucket, endpoint, profile)
         self.local = LocalFileFetcher()
 
     def get_key(self, handler, path) -> tuple[str, dict]:
@@ -441,8 +441,8 @@ class BEVFetcher(BaseFetcher):
     filter so queries can be restricted to clips with available BEV outputs.
     """
 
-    def __init__(self, bucket, index_dir: str | None = None):
-        super().__init__(bucket)
+    def __init__(self, bucket, index_dir: str | None = None, endpoint: str | None = None, profile: str = "sil-wheel"):
+        super().__init__(bucket, endpoint, profile)
         self.clips_with_bev = None
         if index_dir is not None:
             index_path = Path(index_dir) / "clips_with_bev_set.pkl"
@@ -2974,6 +2974,10 @@ def main(argv=None):
     apply_overrides(config, args.override)
     datastores_cfg = config["datastores"]
     server_cfg = config["server"]
+    # S3 connection settings come from config (not hardcoded) so they can't be
+    # baked into / sanitized out of the code; the fetchers below read them.
+    s3_endpoint = server_cfg.get("s3_endpoint")
+    s3_profile = server_cfg.get("s3_profile", "sil-wheel")
 
     print(f"Loading clips_to_apis from {config['clips_to_sil_apis']}")
     with open(config["clips_to_sil_apis"], "r") as f:
@@ -2985,6 +2989,8 @@ def main(argv=None):
     bev_fetcher = BEVFetcher(
         bev_cfg["s3_bucket"],
         index_dir=bev_cfg["metrics_index_dir"],
+        endpoint=s3_endpoint,
+        profile=s3_profile,
     )
 
     log_rss("startup")
@@ -3192,7 +3198,7 @@ def main(argv=None):
     websocket_thread.start()
 
     nurec_job = NurecJobRegistry()
-    video_fetcher = VideoFetcher("processed_data")
+    video_fetcher = VideoFetcher("processed_data", endpoint=s3_endpoint, profile=s3_profile)
     vlm_judge = None
     vlm_provider = server_cfg.get("vlm_provider", "auto")
     try:
@@ -3208,11 +3214,11 @@ def main(argv=None):
     arena_store = None
     if "arena_db" in datastores_cfg:
         arena_db_path = datastores_cfg["arena_db"]
-        arena_s3_sess = boto3.Session(profile_name="sil-wheel", region_name="us-east-1")
+        arena_s3_sess = boto3.Session(profile_name=s3_profile, region_name="us-east-1")
         arena_s3_client = arena_s3_sess.client(
             "s3",
             config=Config(max_pool_connections=10, read_timeout=30, connect_timeout=5),
-            endpoint_url="https://s3.example.com",
+            endpoint_url=s3_endpoint,
         )
         arena_store = ArenaStore(arena_db_path, arena_s3_client, "processed_data")
         print(f"Arena store initialized: {arena_db_path}")

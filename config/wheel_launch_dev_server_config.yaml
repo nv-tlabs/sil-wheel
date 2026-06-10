@@ -69,3 +69,8 @@ server:
         credential_path: "/path/to/service-account.json"
     llm_provider: "auto"
     vlm_provider: "auto"
+    # S3 connection for the video / BEV / arena fetchers (read by launch_server.py).
+    # Leave s3_endpoint unset to use AWS S3. For an S3-compatible store
+    # (MinIO, Ceph, an internal gateway, ...), set it to that endpoint's URL.
+    # s3_endpoint: "https://s3.example.com"
+    # s3_profile: "sil-wheel"   # AWS/boto3 profile name (default: sil-wheel)
