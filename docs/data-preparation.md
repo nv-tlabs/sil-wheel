@@ -12,27 +12,31 @@ We provide various scripts to prepare the videos and metadata for the server:
 - `scripts/extract_captions_embeddings.py` for extracting caption embeddings using text embeddings such as Qwen3-Embedding-8B
 
 ## Table of Contents
-- [Process Videos](#process-videos)
+- [Data Preparation](#data-preparation)
+  - [Table of Contents](#table-of-contents)
+  - [Process Videos](#process-videos)
     - [Videos on Local Filesystem](#videos-on-local-filesystem)
     - [Videos on S3](#videos-on-s3)
     - [Add Data to S3 and DB Updates](#add-data-to-s3-and-db-updates)
-- [Grant User Access to a New Dataset](#grant-user-access-to-a-new-dataset)
-- [Process Ego-trajectories](#process-ego-trajectories)
+  - [Grant User Access to a New Dataset](#grant-user-access-to-a-new-dataset)
+  - [Process Ego-trajectories](#process-ego-trajectories)
     - [Updating the full-trajectory index](#updating-the-full-trajectory-index)
     - [Updating the sub-trajectory indexes (5 s and 10 s)](#updating-the-sub-trajectory-indexes-5-s-and-10-s)
     - [Building an index from scratch (rare)](#building-an-index-from-scratch-rare)
-- [Extract Text-to-Video Embeddings](#extract-text-to-video-embeddings)
+  - [Extract Text-to-Video Embeddings](#extract-text-to-video-embeddings)
     - [Update Text-to-Video FAISS Index](#update-text-to-video-faiss-index)
-- [Extract Captions](#extract-captions)
+  - [Extract Captions](#extract-captions)
     - [Extract Structured Captions via API Calls](#extract-structured-captions-via-api-calls)
     - [Add Captions to DB](#add-captions-to-db)
-- [Extract Caption Embeddings](#extract-caption-embeddings)
+  - [Extract Caption Embeddings](#extract-caption-embeddings)
     - [Update Caption Embedding Index](#update-caption-embedding-index)
-- [Extract Visual (Florence2 SigCLIP) Embeddings](#extract-visual-florence2-sigclip-embeddings)
+  - [Extract Visual (Florence2 SigCLIP) Embeddings](#extract-visual-florence2-sigclip-embeddings)
     - [Update Visual FAISS Index](#update-visual-faiss-index)
-- [Statistics Artifacts](#statistics-artifacts)
+  - [Statistics Artifacts](#statistics-artifacts)
     - [Trajectory Statistics](#trajectory-statistics)
     - [Dataset Statistics](#dataset-statistics)
+  - [Preparing Additional Datasets](#preparing-additional-datasets)
+    - [OpenDV-YouTube](#opendv-youtube)
 
 ## Process Videos
 
@@ -856,3 +860,104 @@ Outputs
 
 Performance
 - Prints per‑dataset elapsed time and total runtime.
+## Preparing Additional Datasets
+
+The pipeline above operates on any video collection once it is on local disk. Some datasets
+need their own acquisition or pre-processing first; those steps are documented per dataset
+below. Add new datasets as their own subsection here.
+
+### OpenDV-YouTube
+
+[OpenDV-YouTube](https://github.com/OpenDriveLab/DriveAGI/tree/main/opendv) is OpenDriveLab's
+large-scale driving-video dataset (from the GenAD work, CVPR 2024). It is published as a list of
+public YouTube videos rather than as hosted media, so you need to download the videos by following the dataset's own instructions.
+
+**Step 1 — Download the videos.** Follow the official OpenDV download guide in the
+[`OpenDriveLab/DriveAGI`](https://github.com/OpenDriveLab/DriveAGI/tree/main/opendv) repository,
+which provides the video list and the download scripts. The `mini` and `full` splits, the
+YouTube links, and the per-video `start`/`end` trims all come from the public
+[OpenDV-YouTube metadata sheet](https://docs.google.com/spreadsheets/d/1bHWWP_VXeEe5UzIG-QgKFBdH7mNlSC4GFSJkEhFnt2I).
+Save the videos anywhere on local disk — the sampler finds each video by its id regardless of
+folder layout, and quietly skips any ids it cannot find (some videos are removed from YouTube
+over time).
+
+**Step 2 — Sample 20 s clips.** Point `scripts/opendv_sample_clips.py` at your local videos:
+
+```bash
+# uniform: one clip every minute (needs no annotations)
+python scripts/opendv_sample_clips.py --videos-dir /data/opendv/videos \
+    --output-dir /data/opendv/clips --method uniform --interval 60
+
+# diverse: maximal-marginal-relevance selection over per-clip maneuver/caption labels
+python scripts/opendv_sample_clips.py --videos-dir /data/opendv/videos \
+    --output-dir /data/opendv/clips --method diverse --total 1000 --cut nvenc
+```
+
+#### Sampling strategies
+
+Both strategies cut fixed-length windows (default 20 s, `--clip-sec`) from each video's usable
+range `[start, end]` — the `start`/`end` trims come from the metadata sheet. They differ only in
+*which* windows they keep.
+
+**`uniform`** — a content-agnostic baseline. It emits one window every `--interval` seconds:
+windows `[t, t + clip_sec]` for `t = ⌈start / interval⌉ · interval, …` while `t + clip_sec ≤ end`.
+Simple and reproducible, but it samples each kind of scene in proportion to how often it occurs,
+so common situations (e.g. driving straight) dominate.
+
+**`diverse`** — an annotation-guided selector that favors *rare, non-redundant* clips. It slides
+candidate windows at stride `--stride` and labels each window `c` with its dominant maneuver
+command `cmd(c)` and BLIP caption `cap(c)` from the
+[OpenDV-YouTube-Language](https://huggingface.co/datasets/OpenDriveLab/OpenDV-YouTube-Language)
+annotations (fetched from HuggingFace on first use; `uniform` needs no annotations). It then
+greedily builds the selection `S` by **Maximal Marginal Relevance** (Carbonell & Goldstein,
+SIGIR 1998), repeatedly adding the window that maximizes
+
+```
+score(c) = λ · rel(c) − (1 − λ) · max_{s ∈ S} sim(c, s)
+```
+
+- **Relevance** rewards rare maneuvers — `rel(c) = log( N / (freq(cmd(c)) + 1) )`, scaled so the
+  rarest maneuver scores 1, where `N` is the number of candidate windows and `freq(cmd)` is how
+  many of them share that maneuver.
+- **Similarity** penalizes redundancy in both caption and maneuver —
+  `sim(c, s) = 0.5 · Jaccard(cap(c), cap(s)) + 0.5 · 1[cmd(c) = cmd(s)]`, where `Jaccard` is
+  computed over caption word tokens.
+
+`--lambda` (default 0.5) trades relevance against diversity; candidates that overlap an
+already-selected window are skipped, so the chosen clips never overlap in time. The budget is
+either `--select-k` clips per video or `--total N` clips across all videos (allocated
+round-robin so every video contributes). Annotation timestamps are aligned to the trimmed video
+(offset by the per-video `start` discard).
+
+#### Output layout
+
+Each run writes, under `--output-dir`:
+
+```
+<output-dir>/
+└── <method>/                            # "uniform" or "diverse"
+    ├── manifest.jsonl                   # one JSON record per clip
+    └── <video_id>/
+        ├── <video_id>_<start>-<end>.mp4
+        └── ...
+```
+
+Every `manifest.jsonl` record pairs a clip with its source video and timing:
+
+```json
+{
+  "clip_id": "<video_id>__<video_id>_<start>-<end>",
+  "video_id": "<video_id>",
+  "clip_path": "/abs/path/to/<video_id>_<start>-<end>.mp4",
+  "start_sec": 600.0,
+  "end_sec": 620.0,
+  "method": "uniform"
+}
+```
+
+`diverse` records additionally include the labels that drove the selection —
+`"dominant_command"` (the maneuver) and `"dominant_caption"` (the BLIP caption).
+
+The clips are ordinary local video files. To store them in S3 or feed them into the
+embedding/caption pipeline above, run `scripts/prepare_data.py` on the clip directory
+(see [Process Videos](#process-videos)).
