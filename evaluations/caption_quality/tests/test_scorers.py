@@ -18,6 +18,27 @@ import pytest
 import scorers
 
 
+def test_bertscore_caps_tokenizer_model_max_length(monkeypatch):
+    import sys
+    import types
+
+    class FakeTokenizer:
+        model_max_length = int(1e30)
+
+    class FakeBERTScorer:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self._tokenizer = FakeTokenizer()
+
+    fake_bert_score = types.ModuleType("bert_score")
+    fake_bert_score.BERTScorer = FakeBERTScorer
+    monkeypatch.setitem(sys.modules, "bert_score", fake_bert_score)
+
+    scorer = scorers.build_scorer("bertscore")
+
+    assert scorer._scorer._tokenizer.model_max_length == 512
+
+
 def test_base_metrics_registered():
     available = scorers.available_metrics()
     for name in ("nlg", "bertscore", "lingojudge", "llm_judge", "vlm_judge"):

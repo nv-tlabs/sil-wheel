@@ -62,6 +62,7 @@ DEFAULT_KEY_DENYLIST = ["vlm_distill_%", "reason_%", "distill_%", "scenario_%"]
 DEFAULT_NUM_SCENARIOS = 20
 DEFAULT_MIN_PRED_CLIPS = 5
 DEFAULT_SCENARIO_POOL = 100
+SQLITE_IN_BATCH_SIZE = 500
 
 
 def select_scenarios(
@@ -325,15 +326,23 @@ def attach_video_paths(
     """Attach a local ``video_path`` per pair from the annotations DB; drop unresolvable ones."""
     import sqlite3
 
+    if not pairs:
+        return []
+
     conn = sqlite3.connect(annotations_db)
     conn.row_factory = sqlite3.Row
-    clip_ids = [p["clip_id"] for p in pairs]
-    placeholders = ",".join("?" * len(clip_ids))
-    rows = conn.execute(
-        f"SELECT clip_id, path FROM video_paths WHERE clip_id IN ({placeholders})",
-        clip_ids,
-    ).fetchall()
-    conn.close()
+    clip_ids = list(dict.fromkeys(p["clip_id"] for p in pairs))
+    rows = []
+    try:
+        for start in range(0, len(clip_ids), SQLITE_IN_BATCH_SIZE):
+            batch = clip_ids[start:start + SQLITE_IN_BATCH_SIZE]
+            placeholders = ",".join("?" * len(batch))
+            rows.extend(conn.execute(
+                f"SELECT clip_id, path FROM video_paths WHERE clip_id IN ({placeholders})",
+                batch,
+            ))
+    finally:
+        conn.close()
 
     paths = {row["clip_id"]: row["path"] for row in rows}
     missing = 0
@@ -405,7 +414,10 @@ def _scorer_kwargs(name: str, args) -> Dict[str, Any]:
     if name == "nlg":
         return {}
     if name == "bertscore":
-        return {"model_type": args.bertscore_model}
+        return {
+            "model_type": args.bertscore_model,
+            "max_length": args.bertscore_max_length,
+        }
     if name == "lingojudge":
         return {"device": args.lingojudge_device}
     if name == "llm_judge":
@@ -493,6 +505,7 @@ def main():
 
     # BERTScore
     parser.add_argument("--bertscore-model", default="microsoft/deberta-xlarge-mnli")
+    parser.add_argument("--bertscore-max-length", type=int, default=512)
 
     # LingoJudge
     parser.add_argument("--lingojudge-device", default="cuda")

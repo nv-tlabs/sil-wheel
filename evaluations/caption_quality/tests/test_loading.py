@@ -17,7 +17,8 @@ import sqlite3
 
 import pytest
 
-from run_caption_eval import load_pairs
+import run_caption_eval
+from run_caption_eval import attach_video_paths, load_pairs
 
 
 def _make_captions_db(path, with_question=False):
@@ -78,3 +79,36 @@ def test_human_mode_requires_annotations_db(tmp_path):
     _make_captions_db(db)
     with pytest.raises(ValueError, match="annotations DB"):
         load_pairs(db, reference_model="human", prediction_model="pred_model")
+
+
+def test_attach_video_paths_batches_clip_lookup(monkeypatch):
+    max_sqlite_vars = 500
+    pairs = [
+        {"clip_id": f"clip{i}", "data_source": "src", "prediction": "caption"}
+        for i in range(max_sqlite_vars + 1)
+    ]
+    batch_sizes = []
+
+    class FakeConnection:
+        row_factory = None
+
+        def execute(self, _sql, params):
+            batch_sizes.append(len(params))
+            if len(params) > max_sqlite_vars:
+                raise AssertionError("too many SQLite variables")
+            return [
+                {"clip_id": clip_id, "path": f"/videos/{clip_id}.mp4"}
+                for clip_id in params
+            ]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sqlite3, "connect", lambda _path: FakeConnection())
+    monkeypatch.setattr(run_caption_eval.os.path, "exists", lambda _path: True)
+
+    out = attach_video_paths(pairs, "annotations.db")
+
+    assert len(out) == len(pairs)
+    assert max(batch_sizes) <= max_sqlite_vars
+    assert len(batch_sizes) == 2

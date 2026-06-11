@@ -130,6 +130,7 @@ class BERTScorer:
         batch_size: int = 64,
         rescale_with_baseline: bool = False,
         device: Optional[str] = None,
+        max_length: Optional[int] = 512,
     ):
         from bert_score import BERTScorer as _BS
 
@@ -138,6 +139,9 @@ class BERTScorer:
             rescale_with_baseline=rescale_with_baseline,
             device=device,
         )
+        tokenizer = getattr(self._scorer, "_tokenizer", None)
+        if tokenizer is not None and max_length is not None:
+            tokenizer.model_max_length = int(max_length)
 
     def score_batch(self, pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not pairs:
@@ -184,9 +188,11 @@ def score_bertscore(
     model_type: str = "microsoft/deberta-xlarge-mnli",
     batch_size: int = 64,
     lang: str = "en",
+    max_length: Optional[int] = 512,
 ) -> List[Dict[str, Any]]:
     return BERTScorer(
         model_type=model_type, lang=lang, batch_size=batch_size,
+        max_length=max_length,
     ).score_batch(pairs)
 
 
