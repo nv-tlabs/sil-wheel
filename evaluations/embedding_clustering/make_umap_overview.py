@@ -37,6 +37,8 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+import figstyle  # noqa: F401  (registers NVIDIA Sans, sets it as default)
+
 
 def _umap_xy_by_cluster(run_dir: Path):
     data = json.loads((run_dir / "umap.json").read_text())
@@ -75,10 +77,10 @@ def main(argv=None) -> int:
                 ax.set_ylabel(f"{pool['label']}\n({pool['n']:,} clips)", fontsize=11)
             ax.set_xticks([])
             ax.set_yticks([])
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
     fig.suptitle("UMAP overview of spherical $k$-means clusters "
                  "($k$=1000; up to 50k clips/panel shown, colored by cluster)",
-                 fontsize=14)
-    fig.tight_layout()
+                 fontsize=14, y=0.99)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out, dpi=130)
     plt.close(fig)

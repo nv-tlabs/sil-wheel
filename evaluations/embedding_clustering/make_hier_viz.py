@@ -29,20 +29,64 @@ from __future__ import annotations
 
 import argparse
 import json
+import textwrap
 from pathlib import Path
 
 import plotly.graph_objects as go
 
-# Clean qualitative palette for the level-1 families (extended Plotly/D3).
+# Plotly "Vivid" qualitative palette for the level-1 families (matches the
+# overlay + drill-down figures).
 PALETTE = [
-    "#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2", "#EECA3B",
-    "#B279A2", "#FF9DA6", "#9D755D", "#BAB0AC", "#1F77B4", "#2CA02C",
+    "#E58606", "#5D69B1", "#52BCA3", "#99C945", "#CC61B0", "#24796C",
+    "#DAA51B", "#2F8AC4", "#764E9F", "#ED645A", "#CC3A8E", "#A5AA99",
 ]
 
 
-def _short(text: str, n: int = 28) -> str:
-    text = (text or "").strip()
-    return text if len(text) <= n else text[: n - 1] + "…"
+# Stop-word-ish fragments the TF-IDF keyword extractor leaves behind; we drop
+# phrases made entirely of these so on-figure labels stay informative.
+_STOP = {
+    "the", "and", "a", "an", "of", "to", "in", "on", "with", "are", "is", "be",
+    "ego", "two", "this", "that", "it", "its", "their", "depicts", "scene",
+    "video", "shows", "showing", "vehicle", "vehicles",
+}
+
+
+def _clean_keywords(kws: list[str], k: int) -> list[str]:
+    """Pick up to ``k`` informative, non-redundant keywords for a label.
+
+    Drops empty/stop-word-only fragments and any phrase that is a substring of
+    (or superset of) one already chosen, so we don't print "intersection" and
+    "the intersection" side by side.
+    """
+    out: list[str] = []
+    for w in kws:
+        w = (w or "").strip()
+        if not w:
+            continue
+        wl = w.lower()
+        if all(tok in _STOP for tok in wl.split()):
+            continue
+        if any(wl in o.lower() or o.lower() in wl for o in out):
+            continue
+        out.append(w)
+        if len(out) >= k:
+            break
+    return out
+
+
+def _label(v: dict, *, k: int, width: int, use_desc: bool = True) -> str:
+    """Readable, non-truncated on-figure label.
+
+    Level-1 headers prefer the curated LLM ``description`` (room for a phrase);
+    the dense level-2 boxes set ``use_desc=False`` and use short keywords, since
+    a full phrase will not fit. Long text is *wrapped* (HTML ``<br>``), not
+    clipped, so nothing is trimmed.
+    """
+    desc = (v.get("description") or "").strip() if use_desc else ""
+    text = desc or " · ".join(_clean_keywords(v.get("keywords", []), k))
+    if not text:
+        return "—"
+    return "<br>".join(textwrap.wrap(text, width=width, break_long_words=False))
 
 
 def _hex_to_rgba(h: str, a: float) -> str:
@@ -59,6 +103,16 @@ def _build(hier_dir: Path):
     root_id = hier_dir.name
     root_size = sum(topics[p]["size"] for p in l1)
 
+    # Only label the largest few level-2 wedges per branch so text can size up;
+    # the other wedges still show (colour + hover), just without a cramped label.
+    from collections import defaultdict
+    _by_parent = defaultdict(list)
+    for path, v in topics.items():
+        if v["depth"] == 2:
+            _by_parent[path.split(".")[0]].append((path, v["size"]))
+    label_l2 = {p for items in _by_parent.values()
+                for p, _ in sorted(items, key=lambda x: -x[1])[:5]}
+
     ids, labels, parents, values, colors, custom = [], [], [], [], [], []
     # root
     ids.append(root_id)
@@ -72,10 +126,18 @@ def _build(hier_dir: Path):
         depth = v["depth"]
         l1key = path.split(".")[0]
         base = color_of.get(l1key, "#888888")
-        desc = v.get("description") or ", ".join(v.get("keywords", [])[:3])
+        # The level-1 ring has room for 3 wrapped keywords; the dense level-2
+        # ring (often 100 wedges) gets a tighter 2-keyword label so text stays
+        # legible instead of overlapping. Full keyword list is always on hover.
+        if depth == 1:
+            on_fig = _label(v, k=3, width=18, use_desc=True)    # LLM phrase header
+        elif path in label_l2:
+            on_fig = _label(v, k=2, width=13, use_desc=False)   # short keywords (largest wedges)
+        else:
+            on_fig = ""                                          # tiny wedge: colour + hover only
         kw = ", ".join(v.get("keywords", [])[:8])
         ids.append(path)
-        labels.append(_short(desc))
+        labels.append(on_fig)
         parents.append(l1key if depth == 2 else root_id)
         values.append(v["size"])
         colors.append(base if depth == 1 else _hex_to_rgba(base, 0.55))
@@ -93,16 +155,28 @@ def _fig(kind, ids, labels, parents, values, colors, custom, n_l1, root_size, *,
                       "<i>%{customdata[1]}</i><extra></extra>",
         branchvalues="total",
     )
-    trace = (go.Sunburst(insidetextorientation="radial", **common)
-             if kind == "sunburst" else go.Treemap(tiling=dict(pad=2), **common))
-    fig = go.Figure(trace)
-    fig.update_layout(
+    layout = dict(
         title=dict(text=f"<b>{title}</b> — cluster-topic taxonomy "
-                        f"({n_l1} top topics → {len(ids)-1-n_l1} subtopics, "
-                        f"{root_size:,} clips)", x=0.5, font=dict(size=16)),
-        margin=dict(t=56, l=8, r=8, b=8), font=dict(family="Helvetica, Arial", size=12),
+                        f"({n_l1} level-1 topics, {len(ids)-1-n_l1} level-2 subtopics, "
+                        f"{root_size:,} clips)", x=0.5, font=dict(size=18)),
+        margin=dict(t=64, l=8, r=8, b=8),
+        font=dict(family="NVIDIA Sans, Helvetica, Arial", size=15),
         paper_bgcolor="white",
     )
+    if kind == "sunburst":
+        # Radial text reads outward along each wedge and fits far more
+        # characters in a thin level-2 wedge than tangential. Only the largest
+        # few level-2 wedges per branch carry a label (set in ``_build``), so we
+        # can pin a readable floor and hide (not shrink) the rest.
+        trace = go.Sunburst(insidetextorientation="radial", textfont=dict(size=16), **common)
+        layout["uniformtext"] = dict(minsize=11, mode="hide")
+    else:
+        # Treemap boxes have room to wrap full labels; pin a readable floor and
+        # hide (don't clip) the rare box too small for even 9pt text.
+        trace = go.Treemap(tiling=dict(pad=3), textposition="middle center", **common)
+        layout["uniformtext"] = dict(minsize=9, mode="hide")
+    fig = go.Figure(trace)
+    fig.update_layout(**layout)
     return fig
 
 
@@ -129,7 +203,10 @@ def main(argv=None) -> int:
         print("wrote", html, flush=True)
         if args.png:
             try:
-                fig.write_image(str(out / f"{stem}_{kind}.png"), width=1100, height=900, scale=2)
+                # Square canvas for the sunburst (more arc-length per wedge =
+                # more room for the dense level-2 labels); wider for the treemap.
+                w, h = (1800, 1800) if kind == "sunburst" else (1800, 1500)
+                fig.write_image(str(out / f"{stem}_{kind}.png"), width=w, height=h, scale=2)
                 print("wrote", out / f"{stem}_{kind}.png", flush=True)
             except Exception as e:
                 print(f"[png] skipped ({kind}): {e}", flush=True)
