@@ -5,7 +5,7 @@
 
 ## Overview
 
-The Arena is a platform for blind human evaluation of model outputs on tasks that are difficult to evaluate automatically. Evaluators are shown inputs (e.g. a video clip, a prompt) alongside two anonymized model outputs and asked to pick a winner. The system supports arbitrary combinations of input and output types — images, videos, text, and structured JSON — making it applicable to a wide range of visual generation and understanding tasks.
+The Arena is a platform for blind human evaluation of model outputs on tasks that are difficult to evaluate automatically. Evaluators are shown inputs (e.g. a video clip, a prompt) alongside two anonymized model outputs and asked to pick a winner. The system supports arbitrary combinations of input and output types (images, videos, text, and structured JSON), making it applicable to a wide range of visual generation and understanding tasks.
 
 ## S3 Storage Layout
 

@@ -181,7 +181,7 @@ directories to exist.
 
 ## What is intentionally not built
 
-* Perception-based search (object class / count / proximity / direction) —
+* Perception-based search (object class / count / proximity / direction):
   only an empty `wm_stats.parquet` stub is written, so it returns nothing.
 * BEV viewer / metrics filter (no `predictions/` data populated).
 * Arena evaluation mode.

@@ -531,14 +531,17 @@ def main():
             f"{len(embeddings)} embeddings vs {len(items)} metadata items"
         )
 
-    save_checkpoint(
-        output_path,
-        {"embeddings": embeddings, "items": items},
-    )
-    elapsed = time.time() - start
-    print(f"Final save to {output_path}")
-    print(f"Processed {processed_since_save} clips in {elapsed:.2f}s")
-    print(f"Saved {len(embeddings)} embedding rows")
+    if len(items) == 0:
+        print(f"No new clips to process; leaving {output_path} untouched")
+    else:
+        save_checkpoint(
+            output_path,
+            {"embeddings": embeddings, "items": items},
+        )
+        elapsed = time.time() - start
+        print(f"Final save to {output_path}")
+        print(f"Processed {processed_since_save} clips in {elapsed:.2f}s")
+        print(f"Saved {len(embeddings)} embedding rows")
 
 
 if __name__ == "__main__":

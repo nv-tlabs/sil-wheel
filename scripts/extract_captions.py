@@ -621,5 +621,8 @@ if __name__ == "__main__":
 
         t_a = time.time()
 
-    data = atomic_save_parquet(data, path_to_output)
-    print(f"Output with {len(set(data['clip_id']))} clips saved at {path_to_output}")
+    if data.empty:
+        print(f"No new clips to process; leaving {path_to_output} untouched")
+    else:
+        data = atomic_save_parquet(data, path_to_output)
+        print(f"Output with {len(set(data['clip_id']))} clips saved at {path_to_output}")

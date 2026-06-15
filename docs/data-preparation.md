@@ -12,9 +12,11 @@ We provide various scripts to prepare the videos and metadata for the server:
 - `scripts/extract_captions_embeddings.py` for extracting caption embeddings using text embeddings such as Qwen3-Embedding-8B
 
 ## Table of Contents
+- [Supported Sources and Formats](#supported-sources-and-formats)
 - [Process Videos](#process-videos)
     - [Videos on Local Filesystem](#videos-on-local-filesystem)
     - [Videos on S3](#videos-on-s3)
+    - [Videos on the Hugging Face Hub](#videos-on-the-hugging-face-hub)
     - [Add Data to S3 and DB Updates](#add-data-to-s3-and-db-updates)
 - [Grant User Access to a New Dataset](#grant-user-access-to-a-new-dataset)
 - [Process Ego-trajectories](#process-ego-trajectories)
@@ -34,16 +36,42 @@ We provide various scripts to prepare the videos and metadata for the server:
     - [Trajectory Statistics](#trajectory-statistics)
     - [Dataset Statistics](#dataset-statistics)
 
+## Supported Sources and Formats
+
+Every data-preparation and extraction script reads its input the same way, so
+you can point any of them at the same dataset. The videos can live on the local
+filesystem, in an S3 object store, or on the Hugging Face Hub, and they can be
+raw `.mp4` files or `.tar` or `.zip` archives. Each script detects the source
+and file type and picks the right reader automatically. The supported
+combinations are:
+
+| Source | `.mp4` (raw files) | `.tar` archive | `.zip` archive |
+| :--- | :---: | :---: | :---: |
+| Local filesystem | yes | yes | no |
+| S3 object store | yes | yes | no |
+| Hugging Face Hub | no | yes | yes |
+
+In short, `.zip` archives are read only from the Hugging Face Hub, and raw
+`.mp4` files only from the local filesystem or S3; on the Hub the videos must be
+packaged into `.tar` or `.zip` shards. You also work with one source at a time:
+`--bucket` (S3) and `--hf-repo-id` (Hugging Face) cannot be combined, and a local
+or S3 file list must use a single type, because the reader is chosen from its
+first entry. Inside an archive, each video is named `<clip_id>.<camera>.mp4`, and
+`--camera` limits processing to a single camera.
+
+The source flags are the same across every script (`--bucket` / `--profile` /
+`--endpoint` for S3, and `--hf-repo-id` / `--hf-allow-patterns` /
+`--hf-cache-dir` for the Hugging Face Hub), so a dataset on any source flows
+through the whole pipeline. The sections below cover each step in turn, starting
+with video processing.
+
 ## Process Videos
 
-Using the `scripts/prepare_data.py`, we can copy and compress source videos
-to an `output_dir`. The video processing includes: downscaling (default width
-640), encoding H.264/AAC, adds faststart, and targets a size/CRF via ffmpeg.
-If compression fails, the original video is saved uncompressed to the output
-directory. *This script skips already-processed files and runs in parallel
-(default 16 workers).* Its input is a list of absolute video paths or tar archives (one
-per line). It supports local `.mp4` files, local `.tar` archives, S3 `.mp4`
-files, and S3 `.tar` archives (auto-detected from the file extension).
+`scripts/prepare_data.py` copies and compresses source videos into an
+`output_dir`. For each video it downscales (default width 640), encodes to
+H.264/AAC, adds faststart, and targets a size or CRF with ffmpeg. If compression
+fails, the original video is saved uncompressed to the output directory. *The
+script skips already-processed files and runs in parallel (default 16 workers).*
 
 For distributed processing use `--process_id` and `--n_processes` to shard
 work across multiple jobs (same pattern as `extract_video_text_embeddings.py`).
@@ -54,15 +82,19 @@ work across multiple jobs (same pattern as `extract_video_text_embeddings.py`).
 from pathlib import Path
 
 root = "/path/to/videos_root"
-# The list of absolute video paths can be either a list of *mp4 files or a list
-# of *tar files containing the .mp4 files.
+# For raw .mp4 inputs this is a plain list of absolute .mp4 paths, one per line.
 videos = sorted(Path(root).glob("**/*.mp4"))
 
 with open("/tmp/video_clips.txt", "w") as f:
     for p in videos:
         f.write(str(p) + "\n")
 ```
-This list can be a list of *mp4* or *.tar* files. Both should work fine.
+The example above writes a plain list of `.mp4` paths, which is the input
+format for raw local `.mp4` files. Local `.tar` archives use a different
+contract: instead of a list of archive paths, pass a JSON file that maps each
+`clip_id` to the `.tar` archive holding it, for example
+`{"clip_000001": "/path/to/shard_00.tar"}`. The reader opens each archive and
+extracts the matching `<clip_id>.<camera>.mp4` member.
 
 Optionally, you can split the list of clips into chunks for parallel processing as follows:
 ```bash
@@ -71,11 +103,11 @@ outdir=/tmp/chunks
 mkdir -p "$outdir"
 split -l 3000 -d -a 3 --additional-suffix=.txt "$in" "$outdir/chunk_"
 ```
-This is highly recommended if you want to achieve maximum processing speed.
-Once you have processed the list of paths to process, we can run this script
-either in an interactive job or submit a Slurm job. Below are examples for both options:
+This is recommended for maximum throughput. Once your list of paths is ready,
+you can run the script in an interactive job or submit it with Slurm. Examples
+of both follow:
 
-- Run locally i.e. with an interactive job
+- Run locally (interactive job)
 
 ```bash
 python scripts/prepare_data.py /tmp/video_paths.txt /path/to/output_dir
@@ -88,7 +120,7 @@ python scripts/prepare_data.py /tmp/video_paths.txt /path/to/output_dir \
   --process_id 0 --n_processes 8
 ```
 
-- Run with Slurm Job
+- Run as a Slurm job
 
 ```bash
 sbatch --job-name data_processing_0 \
@@ -105,10 +137,9 @@ sbatch --job-name data_processing_0 \
 
 ### Videos on S3
 
-Using the `scripts/prepare_data.py` you can also process data that live on
-an S3-compatible object store. The input should be the paths of the files
-(`.mp4` or `.tar`) relative to the bucket root. You can use something like
-the following command to get this list:
+`scripts/prepare_data.py` can also process data stored on an S3-compatible
+object store. The input is the paths of the files (`.mp4` or `.tar`) relative
+to the bucket root. You can build that list with a command like:
 
 ```bash
 s5cmd --endpoint-url=https://<your-s3-endpoint> --profile <your-aws-profile> ls 's3://<your-source-bucket>/*/chunk_*/<your-camera-folder>/*.mp4' | awk '{print $NF}' | tee video_paths.txt | pv -l >/dev/null
@@ -116,12 +147,45 @@ s5cmd --endpoint-url=https://<your-s3-endpoint> --profile <your-aws-profile> ls 
 ```
 
 
-The above command collects all data with this format
+The command above collects every key matching
 `s3://<your-source-bucket>/*/chunk_*/<your-camera-folder>/*.mp4`
-and saves them to the `video_paths.txt` file. Once this file is ready you
-can launch the processing script as before. Note that you need to
-appropriately set the `--bucket` and `--profile` arguments to specify the
-S3 bucket from which you want to download your data.
+and writes them to `video_paths.txt`. Once the file is ready, launch the
+processing script as before, setting `--bucket` and `--profile` to point at the
+S3 bucket you are downloading from.
+
+### Videos on the Hugging Face Hub
+
+You can also process a dataset straight from the Hugging Face Hub without
+downloading it by hand. Point the script at a dataset repo with `--hf-repo-id`:
+it lists the repo files, picks the archive format (`.zip` or `.tar`) from the
+first matching shard, downloads only this process's shards with
+`snapshot_download`, and reads the videos out of them. `--hf-repo-id` replaces
+the positional `path_to_data` and cannot be combined with `--bucket`.
+
+```bash
+# .zip-packaged dataset (e.g. nvidia/PhysicalAI-Autonomous-Vehicles)
+python scripts/prepare_data.py /path/to/output_dir \
+  --hf-repo-id nvidia/PhysicalAI-Autonomous-Vehicles \
+  --hf-allow-patterns "val/*" \
+  --process_id 0 --n_processes 8
+
+# .tar-packaged dataset (e.g. facebook/PE-Video)
+python scripts/prepare_data.py /path/to/output_dir \
+  --hf-repo-id facebook/PE-Video \
+  --process_id 0 --n_processes 8
+```
+
+Key arguments:
+- `--hf-repo-id`: Hugging Face dataset repo id (e.g. `facebook/PE-Video`). Makes
+  `path_to_data` optional and is mutually exclusive with `--bucket`.
+- `--hf-allow-patterns`: one or more glob patterns that limit which files are
+  downloaded (e.g. `val/*`). Defaults to the whole repo.
+- `--hf-cache-dir`: download cache location; defaults to `$HF_HOME`.
+
+The archives must contain `<clip_id>.<camera>.mp4` members, and `--camera`
+filters to a single camera as with the other sources. The same `--hf-*` flags
+are available on the extraction scripts (captions, embeddings, trajectory
+stats), so a Hugging Face dataset can be carried through the entire pipeline.
 
 ### Add Data to S3 and DB Updates
 
@@ -131,8 +195,9 @@ S3 bucket from which you want to download your data.
 aws s3 --endpoint=https://<your-s3-endpoint> sync /path/to/output_dir s3://<your-target-bucket>/path/to/folder
 ```
 
-In case the data you want to copy is a lot we recommend using [s5cmd](https://github.com/peak/s5cmd). For reference
-we normally ran the following:
+If you have a large amount of data to copy, we recommend
+[s5cmd](https://github.com/peak/s5cmd). For reference, this is what we typically
+run:
 
 ```bash
 find path/to/videos_root -type f -name "*.mp4" > path/to/output_dir/mp4s.txt
@@ -168,9 +233,9 @@ Expected JSON format for `clipid_to_relpath`:
   "clip_000002": "path/to/folder/clip_000002.mp4"
 }
 ```
-Namely the `path/to/folder` needs to be the same as the `dataset_name`. This
-does not have to be the name of the dataset show in the tool, just the name of
-the folder containing the data from this data source.
+Here `path/to/folder` must match `dataset_name`. It does not have to be the
+dataset name shown in the tool, just the name of the folder that holds this data
+source's videos.
 
 
 If you have your data on S3 you can do the following to generate this mapping:
@@ -237,8 +302,8 @@ with conn:
         conn.execute(upsert_clips, (clip_id, "YourDataSourceName"))
 
 
-# If you want to validate that the correct number of clips where updated you can
-# run the following to check the number of clips containg a specific dataset name
+# To validate that the correct number of clips were updated, run the following
+# to count the clips containing a specific dataset name
 sql = """
 SELECT COUNT(*)
 FROM clips
@@ -306,7 +371,7 @@ with conn:
 
 ## Grant User Access to a New Dataset
 
-After ingesting a new dataset (steps 1–3 above), users need explicit permission
+After ingesting a new dataset (steps 1-3 above), users need explicit permission
 to see it. There are two things to do:
 
 **1. Add the dataset to `default_datasources`** in `sil_wheel/stores/users_data_store.py`
@@ -336,29 +401,31 @@ admin panel via **Admin → Edit user → Datasources**.
 
 ## Process Ego-trajectories
 
-Using the `scripts/extract_trajectory_stats.py`, we parse the ego‑trajectory
-signals from raw logs and aligns them to video frames, saving a safetensors
-file consumable by the server. Specifically, we compute speed, acceleration,
-jerk, curvature from the ego-trajectory observations and interpolate to frame
-timestamps for per‑frame display.
+`scripts/extract_trajectory_stats.py` parses the ego-trajectory signals from the
+raw logs and aligns them to the video frames, writing a safetensors file the
+server can consume. Specifically, it computes speed, acceleration, jerk, and
+curvature from the ego-trajectory observations and interpolates them to the
+frame timestamps for per-frame display.
 
-Run Locally
+Run locally:
 
 ```bash
 python scripts/extract_trajectory_stats.py path/to/video_paths.txt path/to/output_dir 0
 ```
-Similar to the other processing scripts, you need to specify the
-path to a file containing the absolute video paths that we need to process
-(`path_to_data`), the output directory (`path_to_output`), and a `cnt`
-integer used to disambiguate output filenames across shards
-(`trajectory_stats_smoothed_{cnt}.safetensors`). This script expects related sensor files
-(e.g., egomotion parquet) in a matching directory layout, in case your format is not supported you will need to parse the trajectory data in the following format:
-`[x, y, z]` -> location (Nx3), `ts` -> timestamps (N,) at which the locations where recorded and `frame_ts` -> timestamps (M,) at which the camera frames where recorded.
+As with the other processing scripts, you pass the file that lists the absolute
+video paths to process (`path_to_data`), the output directory
+(`path_to_output`), and a `cnt` integer that disambiguates output filenames
+across shards (`trajectory_stats_smoothed_{cnt}.safetensors`). The script expects
+the related sensor files (for example the egomotion parquet) in a matching
+directory layout. If your format is not supported, parse the trajectory data
+into these arrays: `[x, y, z]` for location (Nx3), `ts` for the timestamps (N,)
+at which the locations were recorded, and `frame_ts` for the timestamps (M,) at
+which the camera frames were recorded.
 
-Once we have processed the trajectory data, we need to (i) update the memory
-map holding all trajectory data and (ii) the FAISS indexes used for the search.
-For the first step please ran the following code snippet that computes the
-memory map and the index between clip_ids and index in the memory map.
+Once the trajectory data is processed, you update (i) the memory map that holds
+all trajectory data and (ii) the FAISS indexes used for search. For the first
+step, run the snippet below, which builds the memory map and the mapping from
+`clip_id` to its row range in it.
 
 ```python
 import json
@@ -417,7 +484,7 @@ fp.flush()
 with open(json_path, "w") as f:
     json.dump(clip_to_idx, f)
 ```
-Tip: Keep a backup of the `trajectory_data.dat` and the `clip_to_idx.json` before the update.
+Tip: back up `trajectory_data.dat` and `clip_to_idx.json` before updating.
 
 Now, the next step is to update the FAISS indexes used for search. There are
 three indexes in total, each covering a different time granularity:
@@ -425,8 +492,8 @@ three indexes in total, each covering a different time granularity:
 | Index | Spec | `sec` | `M` | Windows per clip |
 | :---- | :--- | :---: | :-: | :-------------- |
 | Full trajectory | `OPQ121,IVF4096,PQ121x8` | n/a | n/a | 1 (entire clip) |
-| 10-second sub-trajectories | `OPQ40,IVF4096,PQ40x8` | 10 | 40 | 3 (0–10 s, 5–15 s, 10–20 s) |
-| 5-second sub-trajectories | `OPQ20,IVF4096,PQ20x8` | 5 | 20 | 4 (0–5 s, 5–10 s, 10–15 s, 15–20 s) |
+| 10-second sub-trajectories | `OPQ40,IVF4096,PQ40x8` | 10 | 40 | 3 (0-10 s, 5-15 s, 10-20 s) |
+| 5-second sub-trajectories | `OPQ20,IVF4096,PQ20x8` | 5 | 20 | 4 (0-5 s, 5-10 s, 10-15 s, 15-20 s) |
 
 **p0 / p1 versioning.** Index files use a two-version scheme. The `_p0` file
 is the trained but not-yet-populated seed index (it is never overwritten).
@@ -500,14 +567,12 @@ automatically and are required as input by the incremental update functions.
 
 ## Extract Text-to-Video Embeddings
 
-This section summarizes how to extract text-video semantic features using the
-`scripts/extract_video_text_embeddings.py` script and keep the Cosmos embedding index
-up to date. It is intentionally concise; as the project root README provides
-additional details. Similar to the other processing scripts, you need to specify the
-path to a file containing the absolute video paths that we need to process.
-This can be either the raw .mp4 files or .tar files containing the mp4s, and it
-can be the same list that we prepared for the [video processing
-scripts](#process-videos).
+This section summarizes how to extract text-to-video semantic features with
+`scripts/extract_video_text_embeddings.py` and keep the Cosmos embedding index
+up to date. It is intentionally brief, since the main README covers more. As
+with the other processing scripts, you pass the file that lists the absolute
+video paths to process; it can list raw `.mp4` files or `.tar` archives, and it
+can be the same list you prepared for [Process Videos](#process-videos).
 
 Key arguments
 - `--model_type`: One of `cosmos_embed1_224p`, `cosmos_embed1_336p`, `cosmos_embed1_448p`, `qwen3_vl_embed_2b`, `qwen3_vl_embed_8b`, `pe_core_b16_224p`, `pe_core_l14_336p`, `pe_core_g14_448p` (default `cosmos_embed1_448p`). The `pe_core_*` variants encode each frame with Meta's Perception Encoder Core CLIP and mean-pool across the time dimension; weights are pulled from the Hugging Face Hub on first use and require the `perception_models` package.
@@ -518,7 +583,7 @@ Key arguments
 - `--bucket` / `--profile` / `--endpoint`: S3 credentials, set together to stream videos from S3 instead of reading local files.
 - `--n_processes` / `--process_id`: Shard the work for distributed runs (same pattern as the other extraction scripts).
 
-- Run Locally i.e. with an Interactive Job
+- Run locally (interactive job)
 
 ```bash
 python scripts/extract_video_text_embeddings.py \
@@ -538,7 +603,7 @@ python scripts/extract_video_text_embeddings.py \
 
 ### Update Text-to-Video FAISS Index
 
-After generating new parquet shards of text–video embeddings, append them to the existing FAISS index. From the repo root:
+After generating new parquet shards of text-video embeddings, append them to the existing FAISS index. From the repo root:
 
 ```python
 from pathlib import Path
@@ -560,10 +625,9 @@ for pi in sorted(Path(path_to_embed).glob("**/*.parquet")):
 
 ## Extract Captions
 
-The `scripts/extract_captions.py` supports generating one
-caption per 20‑second clip or per‑subclip captions by splitting each clip into
-fixed windows. Similar to the other scripts, also here we need to parse the
-path to data to be processed.
+`scripts/extract_captions.py` generates either one caption per 20-second clip or
+per-subclip captions, splitting each clip into fixed windows. As with the other
+scripts, you pass the file that lists the video paths to process.
 
 Key arguments
 - Positional `path_to_data`: text/JSON file listing absolute video paths (one per line).
@@ -623,8 +687,8 @@ parquet_files = sorted(Path(path_to_captions).glob("**/*.parquet"))
 # Gather all captions into a single data frame
 df = pd.concat([pd.read_parquet(fp) for fp in parquet_files], ignore_index=True)
 
-# We need to convert our captions in to the following format. In case your
-# captions are in this format you can skip the next steps and load your caption as is
+# Convert the captions into the following format. If your captions are already
+# in this format, skip the next steps and load them as is.
 #                                       clip_id                                            summary  start_time  end_time
 # 0000098d-473e-4def-8e75-d3acd31df0a7  The video captures a scene at a suburban inter...          15        20
 # 00000b83-a648-4afc-9872-e1a639555e6f  The video depicts a sunny day on a tree-lined ...           0         5
@@ -783,16 +847,15 @@ embedding_store.append_pkl(pkl_paths)
 
 ## Statistics Artifacts
 
-Offline scripts that compute per-dataset statistics for the `/data_stats` view and related analyses.
-
-This section describes the two offline scripts we use to compute per‑dataset statistics for the `/data_stats` view and related analyses.
+Two offline scripts compute per-dataset statistics for the `/data_stats` view
+and related analyses.
 
 ### Trajectory Statistics
 
 Script: `scripts/analyze_trajectory_stats.py`
 
 Purpose
-- Consume the trajectory memory map and reverse index to produce per‑dataset artifacts (PNGs + JSON) used by the `/data_stats` page.
+- Consume the trajectory memory map and reverse index to produce per-dataset artifacts (PNGs + JSON) used by the `/data_stats` page.
 
 How to run
 
@@ -811,7 +874,7 @@ Inputs
 - `--data_database`: SQLite annotations DB to group clips by `data_source`.
 
 Prerequisite: build the memmap and reverse index
-- See the detailed walk‑through in [Process Ego‑trajectories](#process-ego-trajectories) for creating `trajectory_data.dat` and `clip_to_idx.json`.
+- See the detailed walk-through in [Process Ego-trajectories](#process-ego-trajectories) for creating `trajectory_data.dat` and `clip_to_idx.json`.
 
 Outputs
 - Writes one set of artifacts per dataset into `--output_dir` using the dataset slug in the filenames:
@@ -823,11 +886,11 @@ The server endpoint `/data_stats_list` discovers datasets by looking for these f
 Script: `scripts/analyze_data_stats.py`
 
 Purpose
-- Compute per‑dataset statistics directly from the SQLite databases (annotations and captions). Complements trajectory statistics with label and caption analytics.
+- Compute per-dataset statistics directly from the SQLite databases (annotations and captions). Complements trajectory statistics with label and caption analytics.
 
 What it computes
 - Clips per dataset and annotation coverage via `clips.has_manual_annotations` / `clips.has_autolabels`.
-- Annotations per clip: total, manual‑only, autolabel‑only distributions (mean/std/min/max/median).
+- Annotations per clip: total, manual-only, autolabel-only distributions (mean/std/min/max/median).
 - Timed annotation durations: distribution and percentiles (p10/p25/p50/p75/p90/p95).
 - Captions (optional, with `--captions-db`): captions per clip, words per caption, caption durations, and percentiles.
 - Overlap metric: count and ratio of timed annotations that overlap at least one caption interval.
@@ -855,4 +918,4 @@ Outputs
   - optional `artifacts.labels_barplot` path to the label frequency plot
 
 Performance
-- Prints per‑dataset elapsed time and total runtime.
+- Prints per-dataset elapsed time and total runtime.
