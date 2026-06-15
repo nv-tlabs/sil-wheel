@@ -7,9 +7,9 @@ An unsupervised look at how the embeddings SIL-Wheel serves organize a video cor
 
 Three embeddings cluster the **same** pool of clips:
 
-- **Cosmos-Embed1** — 768-d video embedding.
-- **Caption** — Qwen3-Embedding-8B over Qwen3.5-27B captions, 4096-d.
-- **Visual** — Florence-2/SigLIP frame-region, 768-d.
+- **Cosmos-Embed1**: 768-d video embedding.
+- **Caption**: Qwen3-Embedding-8B over Qwen3.5-27B captions, 4096-d.
+- **Visual**: Florence-2/SigLIP frame-region, 768-d.
 
 ## The analysis
 
@@ -117,8 +117,8 @@ Credentials come from `.env` (`WHEEL_URL` / `WHEEL_USERNAME` / `WHEEL_PASSWORD`)
 | --- | --- | --- |
 | `make_figures.py umap-overview` | `emb_cluster_umap_overview.png` | how each embedding lays out the same clips at scale |
 | `make_figures.py overlay-maps --map-only` | `overlay_map_{cosmos,caption,visual}.png` | each embedding's UMAP with its 10 most distinct clusters, pinned to a representative clip |
-| `make_figures.py tables --what topics` | `emb_cluster_topics.tex` | those clusters' topic phrases per embedding — the scene groups each recovers |
-| `make_figures.py tables --what distinctive` | `emb_distinctive_terms.tex` | the terms that most concentrate in each embedding vs the others — what separates them |
+| `make_figures.py tables --what topics` | `emb_cluster_topics.tex` | those clusters' topic phrases per embedding: the scene groups each recovers |
+| `make_figures.py tables --what distinctive` | `emb_distinctive_terms.tex` | the terms that most concentrate in each embedding vs the others: what separates them |
 | `make_figures.py hierarchical` | `hier_drilldown_arrows.png` | one branch per embedding drilled into finer sub-clusters |
 | `preindex_compare.py` | `preindex_compare.json` | how much the PQ index perturbs the partition, and the compression it buys |
 
@@ -126,10 +126,10 @@ Exact figure layout and any paper labels live in the whitepaper source, not here
 
 ## Shared library
 
-`figlib.py` — one dependency-light module shared by every figure generator:
+`figlib.py` is one dependency-light module shared by every figure generator:
 
-- **Topic lexicon** — category colours + signature word sets, `categorize`, `latex_escape`, and the weighted-log-odds distinctive-terms scoring (`topic_profiles`, `distinctive_terms`). Only each embedding's *signature* vocabulary is coloured; shared road/place words stay neutral.
-- **Cluster selection** — `distinct_clusters` (farthest-first over L2-normalised centroids, size-floored) and `dense_xy` (densest-bin anchor for a label on a UMAP blob).
+- **Topic lexicon**: category colours + signature word sets, `categorize`, `latex_escape`, and the weighted-log-odds distinctive-terms scoring (`topic_profiles`, `distinctive_terms`). Only each embedding's *signature* vocabulary is coloured; shared road/place words stay neutral.
+- **Cluster selection**: `distinct_clusters` (farthest-first over L2-normalised centroids, size-floored) and `dense_xy` (densest-bin anchor for a label on a UMAP blob).
 
 `figlib.use_nvidia_style()` registers NVIDIA Sans and sets the matplotlib palette; it imports matplotlib lazily so `figlib`'s lexicon/selection helpers (and their tests) stay matplotlib-free.
 
@@ -143,7 +143,7 @@ python -m pytest evaluations/embedding_clustering/tests/ -q
 
 ## Smoke test (synthetic, seconds, no downloads)
 
-`prep.py synthetic` writes a tiny wheel-format dataset that exercises the clustering and figure steps — to verify the workflow, **not** a real result.
+`prep.py synthetic` writes a tiny wheel-format dataset that exercises the clustering and figure steps. It verifies the workflow and is **not** a real result.
 
 ```bash
 O=./synth_starter
@@ -157,6 +157,6 @@ python make_figures.py umap-overview --clustering-dir $O/clustering --fig-runs $
 
 ## Notes
 
-- **Visual is anisotropic** — pass `--center` to `cluster_raw.py` and `preindex_compare.py` for it; mean-centring recovers a usable cosine gap (Δ ~0.10 → ~0.75).
-- **Intrinsic scores are PQ-optimistic** — in `preindex_compare`, read agreement (ARI/NMI), not Δ/silhouette, as the quality axis.
-- **Topics overlap by construction** — all embeddings share the same captions, so the themes overlap; the distinctive-terms table is the discriminator.
+- **Visual is anisotropic**: pass `--center` to `cluster_raw.py` and `preindex_compare.py` for it; mean-centring recovers a usable cosine gap (Δ ~0.10 → ~0.75).
+- **Intrinsic scores are PQ-optimistic**: in `preindex_compare`, read agreement (ARI/NMI), not Δ/silhouette, as the quality axis.
+- **Topics overlap by construction**: all embeddings share the same captions, so the themes overlap; the distinctive-terms table is the discriminator.
