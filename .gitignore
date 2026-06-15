@@ -7,3 +7,5 @@ build/
 *.swp
 *.swo
 .eggs/
+.ruff_cache/
+.pytest_cache/
