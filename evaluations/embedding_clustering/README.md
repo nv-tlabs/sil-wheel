@@ -24,7 +24,6 @@ cluster_raw.py              cluster each embedding (flat; --hierarchical for a t
 make_figures.py themes      name each cluster with an LLM (keywords -> one phrase)
 make_figures.py <fig>       the figures and tables (see "What each output shows")
 preindex_compare.py         exact vs PQ clustering: agreement + compression
-upload_runs.py              push run dirs to the wheel server
 ```
 
 Two clustering passes feed the figures: a small **k=50 exact** pass per embedding (overlay maps, topic/distinctive tables, drill-down) and a large **k=1000** pass (`run_full_cluster.sh`) for the at-scale overview and the pre/after-index check.
@@ -101,15 +100,6 @@ python preindex_compare.py --raw-npz ./npz/caption.npz --index-spec IVF4096,PQ25
 ```
 
 Reports ARI/NMI (partition agreement), compression (bytes/vec exact→PQ), timing, and intrinsic Δ/silhouette; one key per `--embed`.
-
-### 7. Upload runs (optional)
-
-```bash
-python upload_runs.py --clustering-dir ./clustering --runs k50_cosmos k50_caption k50_visual \
-    --url "$WHEEL_URL" --username "$WHEEL_USERNAME" --password "$WHEEL_PASSWORD"
-```
-
-Credentials come from `.env` (`WHEEL_URL` / `WHEEL_USERNAME` / `WHEEL_PASSWORD`).
 
 ## What each output shows
 
