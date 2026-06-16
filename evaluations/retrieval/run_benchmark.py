@@ -13,28 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Video-retrieval benchmark for MSR-VTT and PVD-Bench.
+"""Text-video retrieval benchmark for MSR-VTT, PVD-Bench, and OpenDV.
 
-Scores every modality in ``MODALITIES`` standalone, then every pair
-and triplet fused with RRF (Cormack et al. 2009) and z-score sum.
-Both datasets are evaluated on the same modality list; the only
-dataset-specific piece is the split loader.
+Scores every baseline in ``BASELINES`` alone, then every cross-family
+pair and triplet fused with RRF and z-score.
 """
 import argparse
-import csv
 import time
 from itertools import combinations
 from pathlib import Path
 
 import numpy as np
 import orjson
-import pandas as pd
 
 from embeddings_utils import (
     Split,
     load_florence_sigclip_embeddings,
     load_subclip_caption_embeddings,
     load_video_embeddings,
+    read_csv,
+    read_jsonl,
+    read_parquet,
     score_per_video,
 )
 from fusion import rrf_term, zscore_term
@@ -42,24 +41,10 @@ from metrics import ranks_for_paired, recall_at_k, t2v_and_v2t
 from text_encoders import encode_text
 
 
-MODALITIES = [
-    "cosmos_embed1_224p",
-    "cosmos_embed1_336p",
-    "cosmos_embed1_448p",
-    "qwen3_vl_embed_2b",
-    "qwen3_vl_embed_8b",
-    "pe_core_b16_224p",
-    "pe_core_l14_336p",
-    "pe_core_g14_448p",
-    "florence_sigclip",
-    "caption_embedding",
-]
-
-# Map each modality to its underlying model family. Fusion combinations
-# that include two members of the same family are skipped — fusing
-# variants of the same model is redundant (e.g., cosmos_embed1_224p +
-# cosmos_embed1_448p shares an encoder).
-FAMILY = {
+# Each baseline mapped to its model family. Fusion skips combinations
+# with two members of the same family (e.g. two Cosmos-Embed1 resolutions
+# share an encoder, so fusing them is redundant).
+BASELINES = {
     "cosmos_embed1_224p": "cosmos_embed1",
     "cosmos_embed1_336p": "cosmos_embed1",
     "cosmos_embed1_448p": "cosmos_embed1",
@@ -68,7 +53,7 @@ FAMILY = {
     "pe_core_b16_224p": "pe_core",
     "pe_core_l14_336p": "pe_core",
     "pe_core_g14_448p": "pe_core",
-    "florence_sigclip": "florence_sigclip",
+    "florence_sigclip2": "florence_sigclip2",
     "caption_embedding": "caption_embedding",
 }
 
@@ -76,15 +61,17 @@ FUSER_NAMES = ["RRF", "zscore"]
 
 
 def load_msrvtt_split(args):
-    cached = Path(args.cache_dir) / "MSRVTT_JSFUSION_test.csv"
-    if not cached.exists():
+    """MSR-VTT 1K-A: the JSFusion test CSV (``video_id`` / ``sentence``)."""
+    if not args.gt_path.exists():
         raise FileNotFoundError(
-            f"{cached} not found. Fetch it from "
-            "huggingface.co/datasets/friedrichor/MSR-VTT "
-            "(raw_data/MSRVTT_JSFUSION_test.csv) and place it under --cache-dir."
+            f"{args.gt_path} not found. Download MSRVTT_JSFUSION_test.csv from "
+            "huggingface.co/datasets/friedrichor/MSR-VTT (raw_data/) and pass "
+            "it as --gt-path."
         )
-    rows = list(csv.DictReader(open(cached)))
-    assert len(rows) == 1000, f"Expected 1000 JSFusion 1K-A rows, got {len(rows)}"
+    rows = read_csv(args.gt_path)
+    assert len(rows) == 1000, (
+        f"expected 1000 JSFusion 1K-A rows, got {len(rows)}"
+    )
     return Split(
         video_ids=[r["video_id"] for r in rows],
         sentences=[r["sentence"] for r in rows],
@@ -92,38 +79,41 @@ def load_msrvtt_split(args):
 
 
 def load_pvdbench_split(args):
-    """PVD-Bench split + human-verified captions from the metadata parquet."""
-    df = pd.read_parquet(args.metadata_parquet)
-    required = {"clip_id", "human_caption"}
-    missing = required - set(df.columns)
-    assert not missing, (
-        f"{args.metadata_parquet} is missing columns {sorted(missing)}; "
-        "expected output of scripts/extract_pe_video_metadata.py"
+    """PVD-Bench: clips with a human caption from the metadata parquet."""
+    rows = read_parquet(args.gt_path)
+    assert rows and {"clip_id", "human_caption"} <= rows[0].keys(), (
+        f"{args.gt_path} needs clip_id + human_caption columns; "
+        "expected output of extract_pe_video_metadata.py"
     )
-    df = df.dropna(subset=["human_caption"]).reset_index(drop=True)
+    rows = [r for r in rows if isinstance(r["human_caption"], str)]
     return Split(
-        video_ids=[str(v) for v in df["clip_id"]],
-        sentences=df["human_caption"].astype(str).tolist(),
+        video_ids=[str(r["clip_id"]) for r in rows],
+        sentences=[r["human_caption"] for r in rows],
     )
 
 
-DATASETS = {
-    "msrvtt": load_msrvtt_split,
-    "pvdbench": load_pvdbench_split,
-}
+def load_opendv_split(args):
+    """OpenDV: captions JSONL with short/medium/long variants per clip.
+
+    The ground-truth ``clip_id`` repeats the video id as a ``<video>__``
+    prefix that the embeddings drop, so strip it to align the two id spaces.
+    """
+    rows = read_jsonl(args.gt_path)
+    return Split(
+        video_ids=[r["clip_id"].split("__", 1)[-1] for r in rows],
+        sentences=[r[args.caption_length] for r in rows],
+    )
 
 
 def compute_sim(name, split, args):
-    """Build the ``(n_text, n_video)`` similarity matrix for one modality."""
-    if name == "florence_sigclip":
+    """Build the ``(n_text, n_video)`` similarity matrix for one baseline."""
+    if name == "florence_sigclip2":
         text_emb = encode_text(name, split.sentences, args.cache_dir)
         rows, owners = load_florence_sigclip_embeddings(
             Path(args.embeddings_dir) / "florence_sigclip2", split.video_ids
         )
         return score_per_video(text_emb, rows, owners, split.video_ids)
     if name == "caption_embedding":
-        # Captions generated by Qwen3-VL, embedded with Qwen3-Embedding-8B
-        # (the same encoder used for the query text).
         text_emb = encode_text("caption_embedding", split.sentences, args.cache_dir)
         rows, owners = load_subclip_caption_embeddings(
             Path(args.embeddings_dir) / "caption_embeddings_group_0_1.parquet",
@@ -144,10 +134,8 @@ def score(sim):
 
 
 def collect_failures(sim, split, rank_threshold):
-    """Return one record per T2V query whose GT video ranks worse than the
-    threshold. Each record has the query/GT caption alongside the
-    caption of the wrongly-retrieved top-1 video so the failure pattern
-    can be inspected.
+    """T2V queries whose GT video ranks worse than ``rank_threshold``, each
+    paired with the wrongly-retrieved top-1 caption for inspection.
     """
     n = sim.shape[0]
     assert sim.shape == (n, n), f"expected square sim, got {sim.shape}"
@@ -203,8 +191,7 @@ def render_table(title, rows):
 
 
 def cross_family(combo):
-    """True iff every member of ``combo`` is from a distinct family."""
-    families = [FAMILY[m] for m in combo]
+    families = [BASELINES[m] for m in combo]
     return len(set(families)) == len(families)
 
 
@@ -249,68 +236,93 @@ def write_results(sections, args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    supported_datasets = {
+        "msrvtt": load_msrvtt_split,
+        "pvdbench": load_pvdbench_split,
+        "opendv": load_opendv_split,
+    }
+    parser = argparse.ArgumentParser(
+        description="Evaluate retrieval baselines on a dataset."
+    )
     parser.add_argument(
-        "--dataset", required=True, choices=sorted(DATASETS),
+        "dataset", choices=sorted(supported_datasets),
         help="Which dataset to benchmark.",
     )
-    parser.add_argument("--embeddings-dir", type=Path, required=True)
-    parser.add_argument("--cache-dir", type=Path, required=True)
     parser.add_argument(
-        "--metadata-parquet", type=Path, default=None,
-        help="PVD-Bench split + captions parquet "
-             "(scripts/extract_pe_video_metadata.py output).",
-    )
-    parser.add_argument("--results-json", type=Path)
-    parser.add_argument("--results-md", type=Path)
-    parser.add_argument(
-        "--failures-json", type=Path, default=None,
-        help="Optional path to dump per-modality T2V failures (queries whose "
-             "GT video ranks worse than --failures-rank-threshold). Each "
-             "failure records clip_id, gt_caption, rank, top1_clip_id, "
-             "top1_caption.",
+        "embeddings_dir", type=Path,
+        help="Directory of precomputed per-baseline embeddings "
+             "(see the README for the expected layout).",
     )
     parser.add_argument(
-        "--failures-rank-threshold", type=int, default=10,
-        help="A query is recorded as a failure when its GT rank exceeds this "
-             "threshold (default: 10, i.e. R@10 misses).",
+        "cache_dir", type=Path,
+        help="Directory for cached query-text encodings, one .npy per "
+             "encoder keyed by the sentence hash.",
     )
     parser.add_argument(
-        "--failures-fusion-combo", type=str, default=None,
-        help="Optional fusion combo whose T2V failures should also be dumped, "
-             "formatted as `mod1+mod2+...:RRF|zscore`. The key in "
-             "--failures-json is the combo string verbatim.",
+        "gt_path", type=Path,
+        help="Ground-truth file for the dataset: the MSR-VTT JSFusion CSV, "
+             "the PVD-Bench metadata parquet, or the OpenDV captions JSONL.",
+    )
+    parser.add_argument(
+        "--caption_length", choices=["short", "medium", "long"],
+        default="long",
+        help="Which OpenDV caption variant to use as the query text "
+             "(default: long). Only used by the opendv dataset.",
+    )
+    parser.add_argument(
+        "--results_json", type=Path,
+        help="Path to write the full results as JSON.",
+    )
+    parser.add_argument(
+        "--results_md", type=Path,
+        help="Path to write the results as a Markdown leaderboard.",
+    )
+    parser.add_argument(
+        "--failures_json", type=Path, default=None,
+        help="Path to dump per-baseline T2V failures (queries whose GT video "
+             "ranks worse than --failures_rank_threshold). Each failure "
+             "records clip_id, gt_caption, rank, top1_clip_id, top1_caption.",
+    )
+    parser.add_argument(
+        "--failures_rank_threshold", type=int, default=10,
+        help="A query is a failure when its GT rank exceeds this threshold "
+             "(default: 10, i.e. R@10 misses).",
+    )
+    parser.add_argument(
+        "--failures_fusion_combo", type=str, default=None,
+        help="Fusion combo whose T2V failures should also be dumped, "
+             "formatted as baseline1+baseline2+...:RRF|zscore. The key in "
+             "--failures_json is the combo string verbatim.",
     )
     args = parser.parse_args()
 
-    split = DATASETS[args.dataset](args)
+    split = supported_datasets[args.dataset](args)
 
     standalone = {}
     rrf_terms = {}
     zscore_terms = {}
     failures = {}
-    available_modalities = []
+    available_baselines = []
 
-    print(f"[standalone] computing {len(MODALITIES)} modalities", flush=True)
-    for i, name in enumerate(MODALITIES, 1):
+    print(f"[standalone] computing {len(BASELINES)} baselines", flush=True)
+    for i, name in enumerate(BASELINES, 1):
         t0 = time.time()
         try:
             sim = compute_sim(name, split, args)
         except FileNotFoundError as e:
-            print(f"  [{i}/{len(MODALITIES)}] {name} skipped: {e}", flush=True)
+            print(f"  [{i}/{len(BASELINES)}] {name} skipped: {e}", flush=True)
             continue
-        available_modalities.append(name)
+        available_baselines.append(name)
         standalone[name] = score(sim)
         if args.failures_json:
             failures[name] = collect_failures(
                 sim, split, args.failures_rank_threshold
             )
-        # Precompute fusion terms now and drop the raw sim.
         rrf_terms[name] = rrf_term(sim)
         zscore_terms[name] = zscore_term(sim)
         del sim
         print(
-            f"  [{i}/{len(MODALITIES)}] {name} "
+            f"  [{i}/{len(BASELINES)}] {name} "
             f"(R@1 t2v={standalone[name]['t2v']['R@1']*100:.1f}, "
             f"{time.time()-t0:.1f}s)",
             flush=True,
@@ -320,8 +332,8 @@ def main():
         combo_str, _, fuser = args.failures_fusion_combo.rpartition(":")
         combo = combo_str.split("+")
         assert fuser in ("RRF", "zscore"), f"bad fuser: {fuser}"
-        assert all(m in available_modalities for m in combo), (
-            f"combo {combo} not in available modalities {available_modalities}"
+        assert all(m in available_baselines for m in combo), (
+            f"combo {combo} not in available baselines {available_baselines}"
         )
         terms = rrf_terms if fuser == "RRF" else zscore_terms
         fused_sim = sum(terms[m] for m in combo)
@@ -336,12 +348,12 @@ def main():
         print(f"Wrote {args.failures_json}")
 
     pairs = eval_combos(2, rrf_terms, zscore_terms,
-                        available_modalities, "pairs")
+                        available_baselines, "pairs")
     triplets = eval_combos(3, rrf_terms, zscore_terms,
-                           available_modalities, "triplets")
+                           available_baselines, "triplets")
 
     write_results([
-        (f"Standalone ({len(standalone)} modalities)", standalone),
+        (f"Standalone ({len(standalone)} baselines)", standalone),
         (f"Pairs ({len(pairs)} rows)", pairs),
         (f"Triplets ({len(triplets)} rows)", triplets),
     ], args)

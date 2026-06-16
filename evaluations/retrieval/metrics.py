@@ -44,10 +44,10 @@ def ranks_for_paired(sim_matrix, gt_indices):
     )
     gt = np.asarray(gt_indices)
     gt_scores = sim_matrix[np.arange(sim_matrix.shape[0]), gt]
-    # Average-rank-on-tie (scipy.stats.rankdata method="average"):
-    # rank = 1 + #strict_greater + #equal/2 (the -1 cancels GT itself).
-    # When phrase-FTS returns ``-inf`` for every gallery item, GT ties
-    # with every row and lands at the expected rank N/2, not at fake 1.
+    # Rank of each query's correct match, ties split evenly (scipy
+    # rankdata "average"): how many entries in the query's row score
+    # higher, plus 1, plus half of those tied with it. ``equal`` includes
+    # the match itself, hence ``(equal - 1)``.
     strict_greater = (sim_matrix > gt_scores[:, None]).sum(axis=1)
     equal = (sim_matrix == gt_scores[:, None]).sum(axis=1)
     return strict_greater + 1 + (equal - 1) / 2.0

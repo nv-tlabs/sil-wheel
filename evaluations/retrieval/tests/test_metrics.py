@@ -31,7 +31,7 @@ def test_recall_perfect_identity():
 
 def test_recall_worst_case():
     # Reverse-order ground truth: the correct video always has the
-    # *lowest* similarity, so the rank of the GT is the gallery size.
+    # *lowest* similarity, so the rank of the GT is N (the number of videos).
     n = 10
     sim = np.arange(n * n, dtype=np.float32).reshape(n, n)  # row r ranks col n-1 highest
     gt = np.zeros(n, dtype=np.int64)  # GT is col 0 → strictly worst
@@ -82,9 +82,8 @@ def test_t2v_v2t_rejects_non_square():
 
 
 def test_all_tied_scores_give_expected_rank():
-    # Every gallery entry is -inf (e.g. phrase-FTS with zero matches).
-    # GT should land at expected rank under random tie ordering, not 1.
+    # When every candidate ties, GT lands at the average rank (N+1)/2.
     n = 10
-    sim = np.full((n, n), -np.inf, dtype=np.float32)
+    sim = np.zeros((n, n), dtype=np.float32)
     ranks = ranks_for_paired(sim, np.arange(n))
     np.testing.assert_allclose(ranks, np.full(n, (n + 1) / 2.0))
