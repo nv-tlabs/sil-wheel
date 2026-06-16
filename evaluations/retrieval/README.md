@@ -31,10 +31,10 @@ dict.
 | 8 visual encoders (3× Cosmos-Embed1, 3× PE-Core, 2× Qwen3-VL-Embedding, Florence-2/SigLIP) | one precomputed `<model>_group_0_1.parquet` per encoder under `--embeddings-dir` (Florence/SigLIP is per-crop pickles in a `florence_sigclip/` subdir) |
 | `caption_embedding` | precomputed Qwen3-Embedding-8B vectors over Qwen3-VL captions in `caption_embeddings_group_0_1.parquet` |
 
-Fusion uses **RRF** (Cormack et al. 2009, `1 / (k + rank)`, k=60) and
-per-row **z-score sum** of the cosine similarities. Combinations are
-restricted to cross-family triples / pairs (e.g., two Cosmos-Embed1
-resolutions are not fused with each other).
+Fusion uses **RRF** (Reciprocal Rank Fusion; Cormack et al. 2009,
+`1 / (k + rank)`, k=60) and per-row **z-score sum** of the cosine
+similarities. Combinations are restricted to cross-family pairs and triples
+(e.g., two Cosmos-Embed1 resolutions are not fused with each other).
 
 ## Running
 

@@ -20,7 +20,7 @@
   &nbsp;✦&nbsp;
   <a href="https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/tutorials.html">Tutorials &amp; Recipes</a>
   &nbsp;✦&nbsp;
-  <a href="#paper">Technical Report</a>
+  <a href="#citation">Technical Report</a>
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@ retrieval, visual region search, ego-trajectory shape and pattern
 matching, world-model filters, metadata filters, and classifier scores.
 
 Searches in SIL-Wheel are composable: users can combine any number of
-modalities and filters in a single query, and Wheel returns only the
+modalities and filters in a single query, and SIL-Wheel returns only the
 clips that satisfy all active constraints. Retrieved clips can then be
 validated, annotated, curated into datasets or benchmark slices, and
 used for model evaluation within the same system.
@@ -64,19 +64,19 @@ Face datasets are `.tar` or `.zip` archives.
   data preparation pipeline.
 
 - **Agentic workflows.** A set of skills that any agent (Cursor, Claude
-Code, or your own) can load to drive Wheel's search, data
+Code, or your own) can load to drive SIL-Wheel's search, data
 curation, and evaluation in natural language. See [`agent/`](agent/README.md)
 for setup and usage.
 
 - **Web UI and Python clients.** Use the full-featured **Web UI** for
   browsing, annotating, curating, and running model arenas, or query
-  Wheel programmatically through `WheelClient` and `WheelHTTPClient`.
+  SIL-Wheel programmatically through `WheelClient` and `WheelHTTPClient`.
   Both interfaces use the same search composition, ranking, and caching
   logic.
 
 ## Installation
 
-Wheel runs on Python 3.12. Clone the repository and create the conda
+SIL-Wheel runs on Python 3.12. Clone the repository and create the conda
 environment, which carries the heavy dependencies:
 
 ```bash
@@ -114,7 +114,7 @@ recommend skipping it; the PyTorch fallback is slightly slower but works fine.
 
 ## Quickstart
 
-The quickest way to see Wheel end to end is to run one of the example
+The quickest way to have a working version of SIL-Wheel is to run one of the example
 walkthroughs. Each one downloads a dataset, runs the full preparation pipeline,
 builds every index, and starts a server with every search modality populated.
 They share the same `scripts/`, so they also serve as worked references for your
@@ -153,11 +153,11 @@ YAML) in a browser.
 
 ## Python API
 
-Wheel can also be driven directly from Python through two clients:
+SIL-Wheel can also be driven directly from Python through two clients:
 
 - `WheelClient` for local access, when your process can read the datasets,
   indices, metadata, and artifacts referenced in the launch YAML.
-- `WheelHTTPClient` for remote access, when you connect to a running Wheel
+- `WheelHTTPClient` for remote access, when you connect to a running SIL-Wheel
   server over HTTP.
 
 ### Local Client
@@ -192,7 +192,7 @@ print(df.head(10))
 
 ### HTTP Client
 
-Use `WheelHTTPClient` when connecting to an already running Wheel server. Its
+Use `WheelHTTPClient` when connecting to an already running SIL-Wheel server. Its
 surface is identical to `WheelClient`, except that `result.scores` is empty for
 remote results (the server returns clip IDs only), so use `result.clip_ids`
 directly.

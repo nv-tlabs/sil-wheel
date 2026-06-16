@@ -16,7 +16,7 @@ export NV_INFERENCE_API_KEY=...   # required for llm_judge / vlm_judge / evqa
 
 ## Quickstart
 
-No data of your own yet? `example_starter_lingoqa.py` pulls the public **LingoQA** validation split (Marcu et al., ECCV 2024, [arXiv:2312.14115](https://arxiv.org/abs/2312.14115)) via the HuggingFace `datasets` loader and writes a ready-to-score captions DB + `config.yaml`. Each LingoQA question carries two human answers, loaded as the reference and prediction model.
+No data of your own yet? `example_starter_lingoqa.py` pulls the public **LingoQA** validation split (Marcu et al., ECCV 2024, [arXiv:2312.14115](https://arxiv.org/abs/2312.14115)) via the HuggingFace `datasets` loader. It writes a ready-to-score captions DB and a `config.yaml`. Each LingoQA question carries two human answers, loaded as the reference and prediction model.
 
 ```sh
 pip install datasets
@@ -78,7 +78,7 @@ python evaluations/caption_quality/run_caption_eval.py config.yaml results.md \
     --metrics bertscore,lingojudge,llm_judge --num-samples 200
 ```
 
-Pin scenarios with repeated `--scenarios "Roadwork" --scenarios "U-turn"`. A failing metric is logged and skipped (the rest continue); `--llm-provider auto` picks the provider from your API-key env vars; `--evqa-cache-dir <dir>` caches per-video features so warm runs skip SigLIP+YOLO. Output is one markdown section per metric — rows grouped by `scenario` (human mode) or `data_source` (caption-vs-caption), means across clips.
+Pin scenarios with repeated `--scenarios "Roadwork" --scenarios "U-turn"`. A failing metric is logged and skipped (the rest continue); `--llm-provider auto` picks the provider from your API-key env vars; `--evqa-cache-dir <dir>` caches per-video features so warm runs skip SigLIP+YOLO. Output is one markdown section per metric: rows grouped by `scenario` (human mode) or `data_source` (caption-vs-caption), means across clips.
 
 ## References & attribution
 

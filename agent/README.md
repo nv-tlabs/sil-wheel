@@ -59,10 +59,11 @@ bash tests/run_clean_room.sh
 ```
 
 Copies only the public files into a throwaway dir, installs deps into a fresh
-venv, and runs (1) an offline unit smoke and (2) a clean-room end-to-end against
-a bundled **mock SIL-Wheel server**, proving the documented workflows drive the
-API with no NVIDIA network and no live server. This is the harness you point at
-a real (even minimal) deployment to validate end to end.
+venv, then runs an offline unit smoke test and a clean-room end-to-end test
+against a bundled **mock SIL-Wheel server**. This proves the documented
+workflows drive the API with no NVIDIA network and no live server. It is the
+same harness you point at a real (even minimal) deployment to validate it end
+to end.
 
 ## Layout
 

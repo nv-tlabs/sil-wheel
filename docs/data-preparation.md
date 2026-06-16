@@ -333,7 +333,7 @@ ON CONFLICT(name) DO UPDATE SET
     license  = excluded.license;
 """
 
-cur = conn.execute(sql, ("YourDataSourceName", "General Video", "public"))
+cur = conn.execute(query, ("YourDataSourceName", "General Video", "public"))
 conn.close()
 ```
 
@@ -560,7 +560,7 @@ parse_subtrajectory_data_from_dir(DATA, sec=5, M=20)
 
 These functions write `_p1` files directly and can be used as a drop-in
 replacement if the seed index is unavailable. Training requires at least
-1 000 000 vectors to be buffered before it starts.
+1,000,000 vectors to be buffered before it starts.
 
 Tip: keep backups of all `_p0` seed index files. They are never regenerated
 automatically and are required as input by the incremental update functions.
