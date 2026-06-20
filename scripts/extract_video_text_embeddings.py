@@ -227,7 +227,9 @@ if __name__ == "__main__":
         processed_clips = set(sorted(data["clip_id"]))
     else:
         # Get all files in the output folder
-        parquet_files = sorted(Path(Path(path_to_output).parent).glob("**/*.parquet"))
+        parquet_files = sorted(Path(
+            Path(path_to_output).parent
+        ).glob(f"**/{args.model_type}_*.parquet"))
         processed_clips = set()
         for pi in tqdm(parquet_files):
             data = pd.read_parquet(pi)
