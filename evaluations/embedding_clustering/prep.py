@@ -24,7 +24,6 @@
     python prep.py fig-runs --runs ./emb_pools/runs.tsv --clustering-dir ./clustering --out fig_runs.json
     python prep.py synthetic --out ./synth_starter
 """
-from __future__ import annotations
 
 import argparse
 import json
@@ -32,15 +31,15 @@ import pickle
 import sqlite3
 from pathlib import Path
 
+import faiss
 import numpy as np
 
 
-# ======================================================================
 # pool -- clip-id pools in the cosmos∩visual∩caption intersection
-# ======================================================================
 
-def _uuids_from_path_file(path: Path) -> set[str]:
-    out: set[str] = set()
+
+def _uuids_from_path_file(path):
+    out = set()
     with open(path) as f:
         for line in f:
             line = line.strip()
@@ -49,27 +48,26 @@ def _uuids_from_path_file(path: Path) -> set[str]:
     return out
 
 
-def _load_cosmos_keys(cti_pkl: Path) -> set[str]:
+def _load_cosmos_keys(cti_pkl):
     with open(cti_pkl, "rb") as f:
         return set(pickle.load(f).keys())
 
 
-def _load_visual_keys(ids_npy: Path) -> set[str]:
+def _load_visual_keys(ids_npy):
     return {str(x) for x in np.load(ids_npy, allow_pickle=True)}
 
 
-def _load_caption_itc(itc_pkl: Path) -> dict:
+def _load_caption_itc(itc_pkl):
     """Legacy index->clip map ({row_index: clip_id}) for the full caption index."""
     with open(itc_pkl, "rb") as f:
         return pickle.load(f)
 
 
-def _build_caption_cti(itc: dict, keep: set[str], out_dir: Path,
-                       caption_index: Path, caption_tag: str) -> int:
+def _build_caption_cti(itc, keep, out_dir, caption_index, caption_tag):
     """Invert the legacy index->clip map into a clip_id->row map restricted to
     ``keep`` and persist it where ``embed_io.load_clip_to_index`` will find it
     (a writable caption dir). First (smallest) row wins per clip, matching wheel."""
-    cti: dict[str, int] = {}
+    cti = {}
     for row in sorted(itc):
         cid = str(itc[row])
         if cid in keep and cid not in cti:
@@ -86,12 +84,16 @@ def _build_caption_cti(itc: dict, keep: set[str], out_dir: Path,
     return len(cti)
 
 
-def cmd_pool(args) -> int:
+def cmd_pool(args):
     wd = args.wheel_data_dir
     cosmos_cti = wd / f"cosmos_clip_to_index_{args.cosmos_tag}.pkl"
     visual_ids = wd / "visual_embeddings" / f"visual_clip_ids_{args.visual_tag}.npy"
-    caption_itc = wd / "caption_embeddings" / f"caption_index_to_clip_{args.caption_tag}.pkl"
-    caption_index = wd / "caption_embeddings" / f"caption_embeddings_{args.caption_tag}.index"
+    caption_itc = (
+        wd / "caption_embeddings" / f"caption_index_to_clip_{args.caption_tag}.pkl"
+    )
+    caption_index = (
+        wd / "caption_embeddings" / f"caption_embeddings_{args.caption_tag}.index"
+    )
 
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -116,7 +118,7 @@ def cmd_pool(args) -> int:
 
     n_pai = 0
     if args.pai_path_files:
-        pai: set[str] = set()
+        pai = set()
         for pf in args.pai_path_files:
             pai |= _uuids_from_path_file(pf)
         pai_common = sorted(pai & common)
@@ -132,28 +134,32 @@ def cmd_pool(args) -> int:
     (out / "large_clip_ids.json").write_text(json.dumps(large))
     print(f"large: sampled {len(large):,} of {len(common_arr):,}", flush=True)
 
-    summary = {"common_set": len(common), "full": len(full), "caption_cti": n_cti,
-               "pai": n_pai, "large": len(large), "n_large_requested": args.n_large,
-               "seed": args.seed}
+    summary = {
+        "common_set": len(common),
+        "full": len(full),
+        "caption_cti": n_cti,
+        "pai": n_pai,
+        "large": len(large),
+        "n_large_requested": args.n_large,
+        "seed": args.seed,
+    }
     (out / "pool_summary.json").write_text(json.dumps(summary, indent=2))
     print("summary:", summary, flush=True)
     return 0
 
 
-# ======================================================================
 # fig-runs -- fig_runs.json from runs.tsv
-# ======================================================================
 
 EMBEDS = [
-    {"key": "cosmos",  "label": "Cosmos-Embed1",          "color": "#4C78A8"},
+    {"key": "cosmos", "label": "Cosmos-Embed1", "color": "#4C78A8"},
     {"key": "caption", "label": "Caption (Qwen3-Emb-8B)", "color": "#F58518"},
-    {"key": "visual",  "label": "Florence-2/SigLIP",      "color": "#54A24B"},
+    {"key": "visual", "label": "Florence-2/SigLIP", "color": "#54A24B"},
 ]
 
 
-def cmd_fig_runs(args) -> int:
-    latest: dict[tuple[str, str], str] = {}
-    pool_order: list[str] = []
+def cmd_fig_runs(args):
+    latest = {}
+    pool_order = []
     for line in args.runs.read_text().splitlines():
         parts = line.split("\t")
         if len(parts) != 6 or not parts[5].startswith("DONE_rc=0"):
@@ -171,7 +177,10 @@ def cmd_fig_runs(args) -> int:
         runs = {e: latest[(pool, e)] for e in emb_keys if (pool, e) in latest}
         if len(runs) < len(emb_keys):
             missing = [e for e in emb_keys if e not in runs]
-            print(f"[warn] pool {pool!r} missing successful runs for {missing}; skipping", flush=True)
+            print(
+                f"[warn] pool {pool!r} missing successful runs for {missing}; skipping",
+                flush=True,
+            )
             continue
         n = 0
         meta = args.clustering_dir / next(iter(runs.values())) / "metadata.json"
@@ -180,44 +189,52 @@ def cmd_fig_runs(args) -> int:
         pools.append({"label": pool.capitalize(), "n": n, "runs": runs})
 
     if not pools:
-        raise SystemExit("no complete pools found in runs.tsv (need cosmos+caption+visual each)")
+        raise SystemExit(
+            "no complete pools found in runs.tsv (need cosmos+caption+visual each)"
+        )
 
     args.out.write_text(json.dumps({"embeds": EMBEDS, "pools": pools}, indent=2))
-    print(f"wrote {args.out} with pools: " + ", ".join(f"{p['label']}({p['n']})" for p in pools))
+    print(
+        f"wrote {args.out} with pools: "
+        + ", ".join(f"{p['label']}({p['n']})" for p in pools)
+    )
     return 0
 
 
-# ======================================================================
 # tiny wheel-data set to smoke-test the workflow
-# ======================================================================
 
 # name -> (dim, filename tag, faiss build spec); small nlist for a tiny set.
 EMB = {
-    "cosmos":  (384, "ivf4096_pq96x8",  "IVF16,PQ96x8"),
+    "cosmos": (384, "ivf4096_pq96x8", "IVF16,PQ96x8"),
     "caption": (512, "ivf4096_pq256x8", "IVF16,PQ256x8"),
-    "visual":  (384, "ivf4096_pq64x8",  "IVF16,PQ64x8"),
+    "visual": (384, "ivf4096_pq64x8", "IVF16,PQ64x8"),
 }
 # cosmos cleanest, visual noisiest -> three visibly different geometries.
 NOISE = {"cosmos": 0.5, "caption": 0.8, "visual": 1.2}
 THEME_WORDS = {
-    "highway merge":       ["highway", "merge", "ramp", "lane", "accelerate", "overtaking"],
-    "pedestrian crossing": ["pedestrian", "crosswalk", "yield", "walking", "sidewalk", "halt"],
-    "roundabout":          ["roundabout", "circular", "yield", "exit", "navigate", "island"],
-    "parking":             ["parking", "reverse", "stall", "maneuver", "garage", "space"],
-    "traffic light":       ["intersection", "red", "green", "signal", "queue", "wait"],
-    "rain night":          ["rain", "night", "wet", "headlights", "reflection", "dark"],
-    "construction":        ["cones", "construction", "closed", "worker", "detour", "barrier"],
-    "cyclist":             ["cyclist", "bike", "overtake", "share", "shoulder", "helmet"],
+    "highway merge": ["highway", "merge", "ramp", "lane", "accelerate", "overtaking"],
+    "pedestrian crossing": [
+        "pedestrian",
+        "crosswalk",
+        "yield",
+        "walking",
+        "sidewalk",
+        "halt",
+    ],
+    "roundabout": ["roundabout", "circular", "yield", "exit", "navigate", "island"],
+    "parking": ["parking", "reverse", "stall", "maneuver", "garage", "space"],
+    "traffic light": ["intersection", "red", "green", "signal", "queue", "wait"],
+    "rain night": ["rain", "night", "wet", "headlights", "reflection", "dark"],
+    "construction": ["cones", "construction", "closed", "worker", "detour", "barrier"],
+    "cyclist": ["cyclist", "bike", "overtake", "share", "shoulder", "helmet"],
 }
 
 
-def _normalize(x: np.ndarray) -> np.ndarray:
+def _normalize(x):
     return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-8)
 
 
-def cmd_synthetic(args) -> int:
-    import faiss
-
+def cmd_synthetic(args):
     rng = np.random.default_rng(args.seed)
     themes = list(THEME_WORDS)[: max(2, min(args.themes, len(THEME_WORDS)))]
     clip_ids = [f"clip_{i:06d}" for i in range(args.n)]
@@ -234,7 +251,9 @@ def cmd_synthetic(args) -> int:
 
     for name, (d, tag, spec) in EMB.items():
         proj = rng.normal(size=(base_d, d))
-        vecs = _normalize(latent @ proj + rng.normal(size=(args.n, d)) * NOISE[name]).astype("float32")
+        vecs = _normalize(
+            latent @ proj + rng.normal(size=(args.n, d)) * NOISE[name]
+        ).astype("float32")
         ix = faiss.index_factory(d, spec, faiss.METRIC_INNER_PRODUCT)
         ix.train(np.ascontiguousarray(vecs))
         ix.add(np.ascontiguousarray(vecs))
@@ -267,9 +286,12 @@ def cmd_synthetic(args) -> int:
     rows = []
     for i, c in enumerate(clip_ids):
         words = rng.choice(THEME_WORDS[themes[assign[i]]], size=5, replace=True)
-        rows.append((c, "synthetic_vlm", "the ego vehicle " + " ".join(words), "synthetic"))
+        rows.append(
+            (c, "synthetic_vlm", "the ego vehicle " + " ".join(words), "synthetic")
+        )
     con.executemany(
-        "INSERT INTO captions(clip_id, model_name, caption, data_source) VALUES (?,?,?,?)", rows
+        "INSERT INTO captions(clip_id, model_name, caption, data_source) VALUES (?,?,?,?)",
+        rows,
     )
     con.commit()
     con.close()
@@ -278,38 +300,60 @@ def cmd_synthetic(args) -> int:
     print("next:")
     print(f"  export WD={wd.resolve()} DB={db.resolve()}")
     print(f"  python prep.py pool --wheel-data-dir $WD --out {out}/emb_pools")
-    print(f"  WHEEL_DATA_DIR=$WD CAPTIONS_DB=$DB POOLS_DIR={out}/emb_pools CLUSTER_OUT={out}/clustering \\")
+    print(
+        f"  WHEEL_DATA_DIR=$WD CAPTIONS_DB=$DB POOLS_DIR={out}/emb_pools CLUSTER_OUT={out}/clustering \\"
+    )
     print("      POOL=full K=20 bash run_full_cluster.sh")
     return 0
 
 
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(argv=None):
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("pool", help="clip-id pools in the cosmos∩visual∩caption intersection")
-    p.add_argument("--wheel-data-dir", type=Path, required=True,
-                   help="dir holding the cosmos/visual/caption indices + id maps")
+    p = sub.add_parser(
+        "pool", help="clip-id pools in the cosmos∩visual∩caption intersection"
+    )
+    p.add_argument(
+        "--wheel-data-dir",
+        type=Path,
+        required=True,
+        help="dir holding the cosmos/visual/caption indices + id maps",
+    )
     p.add_argument("--out", type=Path, required=True, help="output dir for the pools")
     p.add_argument("--cosmos-tag", default="ivf4096_pq96x8")
     p.add_argument("--visual-tag", default="ivf4096_pq64x8")
     p.add_argument("--caption-tag", default="ivf4096_pq256x8")
-    p.add_argument("--pai-path-files", type=Path, nargs="*", default=None,
-                   help="optional clip-id path files defining a curated 'pai' subset")
+    p.add_argument(
+        "--pai-path-files",
+        type=Path,
+        nargs="*",
+        default=None,
+        help="optional clip-id path files defining a curated 'pai' subset",
+    )
     p.add_argument("--n-large", type=int, default=2_500_000)
     p.add_argument("--seed", type=int, default=1234)
     p.set_defaults(func=cmd_pool)
 
     p = sub.add_parser("fig-runs", help="fig_runs.json from runs.tsv")
-    p.add_argument("--runs", type=Path, required=True, help="runs.tsv from run_full_cluster.sh")
+    p.add_argument(
+        "--runs", type=Path, required=True, help="runs.tsv from run_full_cluster.sh"
+    )
     p.add_argument("--clustering-dir", type=Path, required=True)
     p.add_argument("--out", type=Path, default=Path("fig_runs.json"))
-    p.add_argument("--pools", nargs="*", default=None,
-                   help="restrict to these pool names (default: all seen, in order)")
+    p.add_argument(
+        "--pools",
+        nargs="*",
+        default=None,
+        help="restrict to these pool names (default: all seen, in order)",
+    )
     p.set_defaults(func=cmd_fig_runs)
 
-    p = sub.add_parser("synthetic", help="tiny synthetic wheel-data set for smoke tests")
+    p = sub.add_parser(
+        "synthetic", help="tiny synthetic wheel-data set for smoke tests"
+    )
     p.add_argument("--out", type=Path, default=Path("synth_starter"))
     p.add_argument("--n", type=int, default=2000, help="number of synthetic clips")
     p.add_argument("--themes", type=int, default=8, help="number of blobs (<= 8)")

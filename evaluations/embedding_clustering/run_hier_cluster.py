@@ -29,7 +29,6 @@ Put the repo root and its ``scripts/`` on PYTHONPATH so ``sil_wheel`` and
         --pools-dir ./emb_pools --pool full --embed cosmos \
         --branching 10 --max-depth 2 --out ./hier/full_cosmos
 """
-from __future__ import annotations
 
 import argparse
 import json
@@ -43,14 +42,20 @@ from embed_io import load_clip_to_index
 from sil_wheel.cluster_hierarchy import build_hierarchical_clustering
 
 
-def main(argv=None) -> int:
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--wheel-data-dir", type=Path, required=True)
     ap.add_argument("--captions-db", type=Path, required=True)
-    ap.add_argument("--pools-dir", type=Path, required=True,
-                    help="dir with <pool>_clip_ids.json (from build_pool_clip_ids.py)")
+    ap.add_argument(
+        "--pools-dir",
+        type=Path,
+        required=True,
+        help="dir with <pool>_clip_ids.json (from build_pool_clip_ids.py)",
+    )
     ap.add_argument("--pool", required=True, help="pool name = <pool>_clip_ids.json")
-    ap.add_argument("--embed", choices=["cosmos", "visual", "caption"], default="cosmos")
+    ap.add_argument(
+        "--embed", choices=["cosmos", "visual", "caption"], default="cosmos"
+    )
     ap.add_argument("--branching", type=int, default=10)
     ap.add_argument("--max-depth", type=int, default=2)
     ap.add_argument("--min-cluster-size", type=int, default=200)
@@ -68,23 +73,32 @@ def main(argv=None) -> int:
     embed_dir, tag = embed_dirs[args.embed]
     idx_path = embed_dir / f"{args.embed}_embeddings_{tag}.index"
     print(f"[hier] loading {args.embed} index {idx_path} (mmap)...", flush=True)
-    index = faiss.read_index(str(idx_path), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
+    index = faiss.read_index(
+        str(idx_path), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY
+    )
     index.make_direct_map()
     clip_to_index = load_clip_to_index(str(embed_dir), args.embed, tag)
     print(f"[hier] index ntotal={index.ntotal:,}", flush=True)
 
-    pool_clip_ids = json.loads((args.pools_dir / f"{args.pool}_clip_ids.json").read_text())
+    pool_clip_ids = json.loads(
+        (args.pools_dir / f"{args.pool}_clip_ids.json").read_text()
+    )
     rows, clip_ids = [], []
     for c in (str(x) for x in pool_clip_ids):
         r = clip_to_index.get(c)
         if r is not None:
             rows.append(int(r))
             clip_ids.append(c)
-    print(f"[hier] pool {args.pool}: {len(clip_ids):,} clips present in index", flush=True)
+    print(
+        f"[hier] pool {args.pool}: {len(clip_ids):,} clips present in index", flush=True
+    )
 
     t0 = time.perf_counter()
     embeddings = index.reconstruct_batch(np.asarray(rows, dtype="int64"))
-    print(f"[hier] reconstructed {embeddings.shape} in {time.perf_counter()-t0:.1f}s", flush=True)
+    print(
+        f"[hier] reconstructed {embeddings.shape} in {time.perf_counter() - t0:.1f}s",
+        flush=True,
+    )
 
     root = build_hierarchical_clustering(
         embeddings,

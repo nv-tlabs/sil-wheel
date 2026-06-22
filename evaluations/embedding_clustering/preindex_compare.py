@@ -32,7 +32,6 @@ Two modes:
     python preindex_compare.py --wheel-data-dir /path/to/wheel-data --embed cosmos
     python preindex_compare.py --raw-npz enc.npz --index-spec IVF4096,PQ256x8 --embed caption
 """
-from __future__ import annotations
 
 import argparse
 import json
@@ -50,12 +49,12 @@ from sklearn.metrics import (
 )
 
 
-def _load_map(pkl: Path) -> dict:
+def _load_map(pkl):
     with open(pkl, "rb") as f:
         return pickle.load(f)
 
 
-def _reconstruct(index_path: Path, row_ids: np.ndarray) -> np.ndarray:
+def _reconstruct(index_path, row_ids):
     ix = faiss.read_index(str(index_path), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
     # IVF/PQ indexes need a direct map to reconstruct by id; Flat indexes
     # reconstruct directly and have no make_direct_map.
@@ -67,7 +66,7 @@ def _reconstruct(index_path: Path, row_ids: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(ix.reconstruct_batch(row_ids), dtype=np.float32)
 
 
-def _quantize_reconstruct(X: np.ndarray, index_spec: str, seed: int) -> np.ndarray:
+def _quantize_reconstruct(X, index_spec, seed):
     """Build a FAISS index of the given spec from raw vectors, then reconstruct.
 
     Isolates the *pure* product-quantization loss: same vectors, only the
@@ -84,26 +83,39 @@ def _quantize_reconstruct(X: np.ndarray, index_spec: str, seed: int) -> np.ndarr
     return np.ascontiguousarray(ix.reconstruct_n(0, len(X)), dtype=np.float32)
 
 
-def _cluster(X: np.ndarray, k: int, seed: int):
+def _cluster(X, k, seed):
     """Spherical (cosine) k-means via faiss, matching wheel's FaissKMeans
     (spherical=True, max_points_per_centroid=256).
 
     Returns ``(labels, centroids, train_secs, assign_secs)``.
     """
     d = X.shape[1]
-    km = faiss.Kmeans(d, k, niter=25, nredo=1, spherical=True, seed=seed,
-                      gpu=False, max_points_per_centroid=256, verbose=False)
+    km = faiss.Kmeans(
+        d,
+        k,
+        niter=25,
+        nredo=1,
+        spherical=True,
+        seed=seed,
+        gpu=False,
+        max_points_per_centroid=256,
+        verbose=False,
+    )
     t0 = time.perf_counter()
     km.train(np.ascontiguousarray(X, dtype=np.float32))
     train_secs = time.perf_counter() - t0
     t1 = time.perf_counter()
     _, labels = km.index.search(np.ascontiguousarray(X, dtype=np.float32), 1)
     assign_secs = time.perf_counter() - t1
-    return (labels.ravel().astype(np.int64), km.centroids.reshape(k, d),
-            train_secs, assign_secs)
+    return (
+        labels.ravel().astype(np.int64),
+        km.centroids.reshape(k, d),
+        train_secs,
+        assign_secs,
+    )
 
 
-def _pq_bytes_per_vec(index_spec: str) -> int | None:
+def _pq_bytes_per_vec(index_spec):
     """Bytes stored per vector for a PQ index_spec like 'IVF4096,PQ96x8'
     (96 sub-quantizers x 8 bits = 96 bytes). None if not a PQ spec."""
     m = re.search(r"PQ(\d+)x(\d+)", index_spec or "")
@@ -119,7 +131,7 @@ def _centroid_gap(X, labels, centroids, sample, seed):
     Xs = X[idx]
     Xs = Xs / (np.linalg.norm(Xs, axis=1, keepdims=True) + 1e-8)
     C = centroids / (np.linalg.norm(centroids, axis=1, keepdims=True) + 1e-8)
-    sims = Xs @ C.T                              # (S, k) cosine to every centroid
+    sims = Xs @ C.T  # (S, k) cosine to every centroid
     own = sims[np.arange(len(idx)), labels[idx]]
     between = (sims.sum(1) - own) / (C.shape[0] - 1)
     return float(own.mean() - between.mean())
@@ -127,29 +139,55 @@ def _centroid_gap(X, labels, centroids, sample, seed):
 
 def _silhouette(X, labels, sample, seed):
     Xn = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-8)
-    return float(silhouette_score(Xn, labels, metric="cosine",
-                                  sample_size=min(sample, len(X)), random_state=seed))
+    return float(
+        silhouette_score(
+            Xn,
+            labels,
+            metric="cosine",
+            sample_size=min(sample, len(X)),
+            random_state=seed,
+        )
+    )
 
 
-def main(argv=None) -> int:
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--embed", default="cosmos",
-                    help="encoder name; used to build flat/PQ index filenames and label the run")
-    ap.add_argument("--wheel-data-dir", type=Path, default=None,
-                    help="flat-index mode: dir with <embed>_embeddings_flat.index + the PQ index")
-    ap.add_argument("--pq-tag", default="ivf4096_pq96x8",
-                    help="flat-index mode: tag for the production PQ index filename")
-    ap.add_argument("--raw-npz", default=None,
-                    help="proxy mode: path to <encoder>.npz with 'clip_ids' + 'embeddings'")
-    ap.add_argument("--index-spec", default="IVF4096,PQ96x8",
-                    help="PQ index_factory spec (self-quantization in proxy mode; "
-                         "also used to report the compression ratio)")
+    ap.add_argument(
+        "--embed",
+        default="cosmos",
+        help="encoder name; used to build flat/PQ index filenames and label the run",
+    )
+    ap.add_argument(
+        "--wheel-data-dir",
+        type=Path,
+        default=None,
+        help="flat-index mode: dir with <embed>_embeddings_flat.index + the PQ index",
+    )
+    ap.add_argument(
+        "--pq-tag",
+        default="ivf4096_pq96x8",
+        help="flat-index mode: tag for the production PQ index filename",
+    )
+    ap.add_argument(
+        "--raw-npz",
+        default=None,
+        help="proxy mode: path to <encoder>.npz with 'clip_ids' + 'embeddings'",
+    )
+    ap.add_argument(
+        "--index-spec",
+        default="IVF4096,PQ96x8",
+        help="PQ index_factory spec (self-quantization in proxy mode; "
+        "also used to report the compression ratio)",
+    )
     ap.add_argument("--k", type=int, default=1000)
-    ap.add_argument("--center", action="store_true",
-                    help="mean-center then re-normalize before clustering. Fixes the "
-                         "anisotropy 'cosine collapse' (e.g. Florence/SigLIP): removes the "
-                         "shared dominant direction so cosine becomes discriminative. "
-                         "Both exact and PQ are centered by the exact mean (fair).")
+    ap.add_argument(
+        "--center",
+        action="store_true",
+        help="mean-center then re-normalize before clustering. Fixes the "
+        "anisotropy 'cosine collapse' (e.g. Florence/SigLIP): removes the "
+        "shared dominant direction so cosine becomes discriminative. "
+        "Both exact and PQ are centered by the exact mean (fair).",
+    )
     ap.add_argument("--n", type=int, default=0, help="cap clips (0 = all overlap)")
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--sil-sample", type=int, default=10000)
@@ -168,7 +206,10 @@ def main(argv=None) -> int:
         if args.n and args.n < len(X_exact):
             rng = np.random.default_rng(args.seed)
             X_exact = X_exact[sorted(rng.choice(len(X_exact), args.n, replace=False))]
-        print(f"  raw {X_exact.shape}; self-quantizing with '{args.index_spec}' ...", flush=True)
+        print(
+            f"  raw {X_exact.shape}; self-quantizing with '{args.index_spec}' ...",
+            flush=True,
+        )
         tq = time.perf_counter()
         X_pq = _quantize_reconstruct(X_exact, args.index_spec, args.seed)
         recon_pq_secs = time.perf_counter() - tq
@@ -185,13 +226,22 @@ def main(argv=None) -> int:
         fmap = {str(k): v for k, v in _load_map(flat_map).items()}
         pmap = {str(k): v for k, v in _load_map(pq_map).items()}
         common = sorted(set(fmap) & set(pmap))
-        print(f"  exact={len(fmap):,}  pq={len(pmap):,}  overlap={len(common):,}", flush=True)
+        print(
+            f"  exact={len(fmap):,}  pq={len(pmap):,}  overlap={len(common):,}",
+            flush=True,
+        )
         if args.n and args.n < len(common):
             rng = np.random.default_rng(args.seed)
-            common = [common[i] for i in sorted(rng.choice(len(common), args.n, replace=False))]
+            common = [
+                common[i]
+                for i in sorted(rng.choice(len(common), args.n, replace=False))
+            ]
         flat_rows = np.array([int(fmap[c]) for c in common], dtype="int64")
         pq_rows = np.array([int(pmap[c]) for c in common], dtype="int64")
-        print(f"[{args.embed}] reconstructing {len(common):,} exact + PQ vectors...", flush=True)
+        print(
+            f"[{args.embed}] reconstructing {len(common):,} exact + PQ vectors...",
+            flush=True,
+        )
         te = time.perf_counter()
         X_exact = _reconstruct(flat_idx, flat_rows)
         recon_exact_secs = time.perf_counter() - te
@@ -207,13 +257,21 @@ def main(argv=None) -> int:
 
         def _cn(A):
             A = A - mu
-            return np.ascontiguousarray(A / (np.linalg.norm(A, axis=1, keepdims=True) + 1e-8),
-                                        dtype=np.float32)
+            return np.ascontiguousarray(
+                A / (np.linalg.norm(A, axis=1, keepdims=True) + 1e-8), dtype=np.float32
+            )
+
         X_exact, X_pq = _cn(X_exact), _cn(X_pq)
         print("  applied mean-centering + renormalization (--center)", flush=True)
-    print(f"  prepared {X_exact.shape}/{X_pq.shape} in {time.perf_counter()-t0:.1f}s", flush=True)
+    print(
+        f"  prepared {X_exact.shape}/{X_pq.shape} in {time.perf_counter() - t0:.1f}s",
+        flush=True,
+    )
 
-    print(f"[{args.embed}] clustering k={args.k} spherical (exact, then PQ)...", flush=True)
+    print(
+        f"[{args.embed}] clustering k={args.k} spherical (exact, then PQ)...",
+        flush=True,
+    )
     lab_exact, cen_exact, train_e, assign_e = _cluster(X_exact, args.k, args.seed)
     lab_pq, cen_pq, train_p, assign_p = _cluster(X_pq, args.k, args.seed)
 
@@ -229,12 +287,16 @@ def main(argv=None) -> int:
     compression = (bytes_exact / bytes_pq) if bytes_pq else None
 
     res = {
-        "embed": args.embed, "k": args.k, "n_clips": n_clips, "dim": d,
+        "embed": args.embed,
+        "k": args.k,
+        "n_clips": n_clips,
+        "dim": d,
         "mode": "raw-npz" if args.raw_npz else "flat-vs-pq",
         "index_spec": index_spec,
         "centered": bool(args.center),
         # --- agreement: does PQ change the partition? (the "lose little" axis) ---
-        "ari_exact_vs_pq": ari, "nmi_exact_vs_pq": nmi,
+        "ari_exact_vs_pq": ari,
+        "nmi_exact_vs_pq": nmi,
         # --- footprint: stored bytes/vec + compression (the "much smaller" axis) ---
         "stored_bytes_per_vec_exact": bytes_exact,
         "stored_bytes_per_vec_pq": bytes_pq,
@@ -242,13 +304,17 @@ def main(argv=None) -> int:
         # --- timing (wall-clock, this host): reconstruct + cluster, exact vs PQ.
         #     NOTE: in raw-npz mode recon_secs_pq includes one-time PQ *training*,
         #     so it is not a per-use reconstruct time -- cite flat-vs-pq instead. ---
-        "recon_secs_exact": round(recon_exact_secs, 2) if recon_exact_secs is not None else None,
+        "recon_secs_exact": round(recon_exact_secs, 2)
+        if recon_exact_secs is not None
+        else None,
         "recon_secs_pq": round(recon_pq_secs, 2) if recon_pq_secs is not None else None,
         "cluster_secs_exact": round(train_e + assign_e, 2),
         "cluster_secs_pq": round(train_p + assign_p, 2),
         # --- intrinsic (PQ-OPTIMISTIC: codebook discretization inflates these;
         #     not a fair exact-vs-PQ quality comparison -- agreement is) ---
-        "delta_gap_exact": _centroid_gap(X_exact, lab_exact, cen_exact, args.gap_sample, args.seed),
+        "delta_gap_exact": _centroid_gap(
+            X_exact, lab_exact, cen_exact, args.gap_sample, args.seed
+        ),
         "delta_gap_pq": _centroid_gap(X_pq, lab_pq, cen_pq, args.gap_sample, args.seed),
         "silhouette_exact": _silhouette(X_exact, lab_exact, args.sil_sample, args.seed),
         "silhouette_pq": _silhouette(X_pq, lab_pq, args.sil_sample, args.seed),

@@ -42,7 +42,6 @@ per-cluster topic distributions are comparable), plus ``pool_summary.json``.
         --root /media/.../pai_embeddings_complete --out /media/.../pai_npz \
         --encoders cosmos caption visual --pool-name pai
 """
-from __future__ import annotations
 
 import argparse
 import json
@@ -57,34 +56,40 @@ import pyarrow.parquet as pq
 # The encoder key is also the npz basename and the embed_type label used
 # downstream (cosmos/caption/visual are the three the paper figures use).
 ENCODERS = {
-    "cosmos":   ("cosmos_embeddings",                   "cosmos_embed1_448p_*.parquet", "parquet"),
-    "caption":  ("qwen3-8b-embed-qwen3.5-27b-caption",  "qwen3_embed_8b_*.parquet",     "parquet"),
-    "visual":   ("visual_embeddings",                   "florence2_sigclip_*.pkl",      "pkl"),
-    "qwen3_vl": ("qwen3_vl_embeddings",                 "qwen3_vl_embed_8b_*.parquet",  "parquet"),
-    "pe_core":  ("pe_core_embeddings",                  "pe_core_g14_448p_*.parquet",   "parquet"),
+    "cosmos": ("cosmos_embeddings", "cosmos_embed1_448p_*.parquet", "parquet"),
+    "caption": (
+        "qwen3-8b-embed-qwen3.5-27b-caption",
+        "qwen3_embed_8b_*.parquet",
+        "parquet",
+    ),
+    "visual": ("visual_embeddings", "florence2_sigclip_*.pkl", "pkl"),
+    "qwen3_vl": ("qwen3_vl_embeddings", "qwen3_vl_embed_8b_*.parquet", "parquet"),
+    "pe_core": ("pe_core_embeddings", "pe_core_g14_448p_*.parquet", "parquet"),
 }
 SPLITS = ("avfoundation", "alpamayo")
 _EMB_COLS = ("embeddings", "embedding")
 
 
-def _shards(root: Path, subdir: str, glob: str) -> list[Path]:
-    out: list[Path] = []
+def _shards(root, subdir, glob):
+    out = []
     for split in SPLITS:
         out += sorted((root / subdir / "physical_ai" / split).glob(glob))
     return out
 
 
-def _read_parquet(files: list[Path]) -> tuple[list[str], np.ndarray]:
+def _read_parquet(files):
     """One vector per clip from list<double> parquet shards (first wins on dup)."""
-    seen: dict[str, int] = {}
-    ids: list[str] = []
-    chunks: list[np.ndarray] = []
+    seen = {}
+    ids = []
+    chunks = []
     d = None
     for f in files:
         sc = pq.ParquetFile(f).schema_arrow
         emb_col = next((c for c in _EMB_COLS if c in sc.names), None)
         if emb_col is None:
-            raise ValueError(f"{f}: no embedding column among {_EMB_COLS} (cols={sc.names})")
+            raise ValueError(
+                f"{f}: no embedding column among {_EMB_COLS} (cols={sc.names})"
+            )
         t = pq.read_table(f, columns=["clip_id", emb_col])
         cids = [str(x) for x in t.column("clip_id").to_pylist()]
         la = t.column(emb_col).combine_chunks()
@@ -100,15 +105,17 @@ def _read_parquet(files: list[Path]) -> tuple[list[str], np.ndarray]:
                 keep_rows.append(i)
         if keep_rows:
             chunks.append(mat[keep_rows])
-    emb = np.concatenate(chunks, axis=0) if chunks else np.zeros((0, d or 0), np.float32)
+    emb = (
+        np.concatenate(chunks, axis=0) if chunks else np.zeros((0, d or 0), np.float32)
+    )
     return ids, np.ascontiguousarray(emb, dtype=np.float32)
 
 
-def _read_visual_pkl(files: list[Path]) -> tuple[list[str], np.ndarray]:
+def _read_visual_pkl(files):
     """Scene-level vector per clip = the __full_frame__ row at frame_index 0."""
-    seen: set[str] = set()
-    ids: list[str] = []
-    chunks: list[np.ndarray] = []
+    seen = set()
+    ids = []
+    chunks = []
     for f in files:
         with open(f, "rb") as fh:
             o = pickle.load(fh)
@@ -116,7 +123,10 @@ def _read_visual_pkl(files: list[Path]) -> tuple[list[str], np.ndarray]:
         rows = []
         cids = []
         for i, it in enumerate(o["items"]):
-            if it.get("label") != "__full_frame__" or int(it.get("frame_index", 0)) != 0:
+            if (
+                it.get("label") != "__full_frame__"
+                or int(it.get("frame_index", 0)) != 0
+            ):
                 continue
             c = str(it["clip_id"])
             if c in seen:
@@ -132,11 +142,13 @@ def _read_visual_pkl(files: list[Path]) -> tuple[list[str], np.ndarray]:
     return ids, np.ascontiguousarray(out, dtype=np.float32)
 
 
-def ingest_one(name: str, root: Path, out_dir: Path) -> list[str]:
+def ingest_one(name, root, out_dir):
     subdir, glob, fmt = ENCODERS[name]
     files = _shards(root, subdir, glob)
     if not files:
-        raise FileNotFoundError(f"{name}: no shards under {root/subdir} matching {glob}")
+        raise FileNotFoundError(
+            f"{name}: no shards under {root / subdir} matching {glob}"
+        )
     t0 = time.perf_counter()
     print(f"[{name}] {len(files)} shards ({fmt}) ...", flush=True)
     if fmt == "parquet":
@@ -145,22 +157,35 @@ def ingest_one(name: str, root: Path, out_dir: Path) -> list[str]:
         ids, emb = _read_visual_pkl(files)
     npz = out_dir / f"{name}.npz"
     np.savez(npz, clip_ids=np.array(ids, dtype=object), embeddings=emb)
-    print(f"[{name}] {emb.shape[0]:,} clips × {emb.shape[1]} dim -> {npz} "
-          f"({time.perf_counter()-t0:.1f}s)", flush=True)
+    print(
+        f"[{name}] {emb.shape[0]:,} clips × {emb.shape[1]} dim -> {npz} "
+        f"({time.perf_counter() - t0:.1f}s)",
+        flush=True,
+    )
     return ids
 
 
-def main(argv=None) -> int:
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--root", type=Path, required=True, help="dir holding the per-encoder dump dirs")
-    ap.add_argument("--out", type=Path, required=True, help="output dir for the npz + pool files")
-    ap.add_argument("--encoders", nargs="+", default=["cosmos", "caption", "visual"],
-                    choices=list(ENCODERS))
-    ap.add_argument("--pool-name", default="pai", help="basename for the intersection clip-id pool")
+    ap.add_argument(
+        "--root", type=Path, required=True, help="dir holding the per-encoder dump dirs"
+    )
+    ap.add_argument(
+        "--out", type=Path, required=True, help="output dir for the npz + pool files"
+    )
+    ap.add_argument(
+        "--encoders",
+        nargs="+",
+        default=["cosmos", "caption", "visual"],
+        choices=list(ENCODERS),
+    )
+    ap.add_argument(
+        "--pool-name", default="pai", help="basename for the intersection clip-id pool"
+    )
     args = ap.parse_args(argv)
 
     args.out.mkdir(parents=True, exist_ok=True)
-    per_enc: dict[str, list[str]] = {}
+    per_enc = {}
     for name in args.encoders:
         per_enc[name] = ingest_one(name, args.root, args.out)
 
