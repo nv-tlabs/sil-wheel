@@ -23,6 +23,7 @@ import figlib
 
 # ---------------------------------------------------------------- lexicon
 
+
 def test_categorize_known_signature_words():
     assert figlib.categorize("snowy") == figlib.APPEAR
     assert figlib.categorize("overcast") == figlib.APPEAR
@@ -63,6 +64,7 @@ def test_categories_are_disjoint():
 
 # ----------------------------------------------------- distinctive terms
 
+
 def _topics(*keyword_lists):
     """One cluster per keyword list, as a cluster_topics 'topics' dict."""
     return {str(i): {"keywords": kws} for i, kws in enumerate(keyword_lists)}
@@ -102,8 +104,11 @@ def test_distinctive_terms_ranks_concentrated_first():
 
 
 def test_distinctive_terms_floor_filters_rare():
-    runs = {"A": _topics(*([["rare", "frequent"]] + [["frequent"]] * 9)),
-            "B": _topics(["frequent"]), "C": _topics(["frequent"])}
+    runs = {
+        "A": _topics(*([["rare", "frequent"]] + [["frequent"]] * 9)),
+        "B": _topics(["frequent"]),
+        "C": _topics(["frequent"]),
+    }
     prof = figlib.topic_profiles(runs)
     terms = figlib.distinctive_terms(prof, "A", ["A", "B", "C"], topn=5, floor=0.2)
     assert "rare" not in terms
@@ -113,17 +118,20 @@ def test_distinctive_terms_log_odds_positive_for_concentrated():
     prof = {"A": {"w": 0.8}, "B": {"w": 0.1}, "C": {"w": 0.1}}
     bg = (0.1 + 0.1) / 2
     assert 0.8 * math.log((0.8 + 1e-3) / (bg + 1e-3)) > 0
-    assert figlib.distinctive_terms(prof, "A", ["A", "B", "C"], topn=1, floor=0.0) == ["w"]
+    assert figlib.distinctive_terms(prof, "A", ["A", "B", "C"], topn=1, floor=0.0) == [
+        "w"
+    ]
 
 
 # --------------------------------------------------- cluster selection
+
 
 def test_farthest_first_picks_opposite_then_orthogonal():
     X = np.array([[1, 0], [0.999, 0.001], [-1, 0], [0, 1]], float)
     chosen = figlib.farthest_first(X, seed=0, k=3)
     assert chosen[0] == 0
-    assert chosen[1] == 2          # -x is the single farthest point
-    assert 1 not in chosen[:3]     # the +x near-duplicate is never preferred
+    assert chosen[1] == 2  # -x is the single farthest point
+    assert 1 not in chosen[:3]  # the +x near-duplicate is never preferred
 
 
 def test_farthest_first_caps_at_n_points():
@@ -142,14 +150,17 @@ def test_distinct_clusters_uses_centroids_and_size_floor(tmp_path):
     sizes = pd.Series({0: 100, 1: 90, 2: 80, 3: 1})  # cluster 3 << mean
     out = figlib.distinct_clusters(tmp_path, sizes, k=3, min_frac=0.5)
     assert 3 not in out
-    assert out[0] == 0             # seeded with the largest cluster
+    assert out[0] == 0  # seeded with the largest cluster
     assert set(out) <= {0, 1, 2} and len(out) == 3
 
 
 def test_distinct_clusters_falls_back_when_all_filtered(tmp_path):
     np.save(tmp_path / "centroids.npy", np.array([[1, 0], [-1, 0]], float))
     sizes = pd.Series({0: 1, 1: 1})
-    assert sorted(figlib.distinct_clusters(tmp_path, sizes, k=2, min_frac=10.0)) == [0, 1]
+    assert sorted(figlib.distinct_clusters(tmp_path, sizes, k=2, min_frac=10.0)) == [
+        0,
+        1,
+    ]
 
 
 def test_dense_xy_finds_the_cluster_not_the_outlier():

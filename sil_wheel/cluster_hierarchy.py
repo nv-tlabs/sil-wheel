@@ -21,22 +21,19 @@ progressively finer cluster-topic taxonomy. Splits reuse
 :class:`~sil_wheel.cluster_build.FaissKMeans`; topics reuse
 :func:`~sil_wheel.stores.cluster_topics.extract_topics_for_run`. A captions DB
 (or explicit ``topic_fn``) is required -- topic-less hierarchies are refused.
-Both backends are injectable, so the recursion/IO is testable without faiss or a DB.
+Both backends are injectable for testing or custom split/topic backends.
 """
-from __future__ import annotations
 
 import json
 import tempfile
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
-# (labels, centroids) <- (embeddings, k, seed)
-ClusterFn = Callable[[np.ndarray, int, int], "tuple[np.ndarray, np.ndarray]"]
-# {child_cid: {"keywords": [...], "description": "..."}} <- (clip_ids, labels, k)
-TopicFn = Callable[[Sequence[str], np.ndarray, int], "dict[str, dict]"]
+from sil_wheel.cluster_build import FaissKMeans, write_cluster_assignments
+from sil_wheel.stores.cluster_topics import extract_topics_for_run, read_topics
 
 
 @dataclass
@@ -57,7 +54,7 @@ class HierNode:
     clip_ids: list[str] = field(default_factory=list)  # leaf members only
 
 
-def _resolve_branching(branching: int | Sequence[int], depth: int) -> int:
+def _resolve_branching(branching, depth):
     """k to use when splitting a node at ``depth`` into level ``depth+1``."""
     if isinstance(branching, int):
         return branching
@@ -65,21 +62,21 @@ def _resolve_branching(branching: int | Sequence[int], depth: int) -> int:
 
 
 def build_hierarchical_clustering(
-    embeddings: np.ndarray,
-    clip_ids: Sequence[str],
+    embeddings,
+    clip_ids,
     *,
-    branching: int | Sequence[int] = 10,
-    max_depth: int = 3,
-    min_cluster_size: int = 50,
-    cluster_fn: ClusterFn | None = None,
-    topic_fn: TopicFn | None = None,
-    captions_db_path: str | Path | None = None,
-    caption_model: str | None = None,
-    samples_per_cluster: int = 50,
-    spherical: bool = True,
-    seed: int = 1234,
-    output_dir: str | Path | None = None,
-) -> HierNode:
+    branching=10,
+    max_depth=3,
+    min_cluster_size=50,
+    cluster_fn=None,
+    topic_fn=None,
+    captions_db_path=None,
+    caption_model=None,
+    samples_per_cluster=50,
+    spherical=True,
+    seed=1234,
+    output_dir=None,
+):
     """Recursively k-means ``embeddings`` (aligned to ``clip_ids``) and label
     every level with topics; returns the hierarchy root (root has no topics).
 
@@ -126,17 +123,17 @@ def build_hierarchical_clustering(
 
 
 def _split_node(
-    node: HierNode,
+    node,
     *,
-    embeddings: np.ndarray,
-    clip_ids: list[str],
-    branching: int | Sequence[int],
-    max_depth: int,
-    min_cluster_size: int,
-    cluster_fn: ClusterFn,
-    topic_fn: TopicFn,
-    seed: int,
-) -> None:
+    embeddings,
+    clip_ids,
+    branching,
+    max_depth,
+    min_cluster_size,
+    cluster_fn,
+    topic_fn,
+    seed,
+):
     """Split ``node`` in place, recursing into each child."""
     k = _resolve_branching(branching, node.depth)
     n = len(clip_ids)
@@ -147,7 +144,7 @@ def _split_node(
 
     labels, _centroids = cluster_fn(embeddings, k, seed)
     labels = np.asarray(labels).astype(np.int64).reshape(-1)
-    topics = topic_fn(clip_ids, labels, k) or {}   # always-on labels for the k children
+    topics = topic_fn(clip_ids, labels, k) or {}  # always-on labels for the k children
 
     for cid in range(k):
         mask = labels == cid
@@ -178,11 +175,11 @@ def _split_node(
         )
 
 
-def flatten_leaf_assignments(root: HierNode) -> dict:
+def flatten_leaf_assignments(root):
     """``{clip_id: leaf_path}`` for every clip (leaves carry their members)."""
-    out: dict[str, str] = {}
+    out = {}
 
-    def walk(n: HierNode) -> None:
+    def walk(n):
         if not n.children:
             for cid in n.clip_ids:
                 out[cid] = n.path
@@ -194,18 +191,12 @@ def flatten_leaf_assignments(root: HierNode) -> dict:
     return out
 
 
-# --------------------------------------------------------------------------
-# Output
-# --------------------------------------------------------------------------
-
-def _write_outputs(root: HierNode, output_dir: Path) -> None:
-    import pandas as pd
-
+def _write_outputs(root, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    topics_out: dict[str, dict] = {}
+    topics_out = {}
 
-    def walk(n: HierNode) -> None:
+    def walk(n):
         if n.path:  # root has no topics
             topics_out[n.path] = {
                 "keywords": n.keywords,
@@ -231,12 +222,10 @@ def _write_outputs(root: HierNode, output_dir: Path) -> None:
     ).to_parquet(output_dir / "hier_assignments.parquet", index=False)
 
 
-def _wheel_cluster_fn(spherical: bool = True) -> ClusterFn:
+def _wheel_cluster_fn(spherical=True):
     """Default split backend: :class:`~sil_wheel.cluster_build.FaissKMeans`."""
 
-    def cluster_fn(X: np.ndarray, k: int, seed: int):
-        from sil_wheel.cluster_build import FaissKMeans
-
+    def cluster_fn(X, k, seed):
         km = FaissKMeans(
             feature_dim=X.shape[1],
             n_clusters=k,
@@ -252,17 +241,14 @@ def _wheel_cluster_fn(spherical: bool = True) -> ClusterFn:
 
 
 def _wheel_topic_fn(
-    captions_db_path: str | Path,
-    caption_model: str | None,
-    samples_per_cluster: int,
-) -> TopicFn:
+    captions_db_path,
+    caption_model,
+    samples_per_cluster,
+):
     """Default topic backend: extract_topics_for_run over a temp run dir built
     from this node's assignments."""
 
-    def topic_fn(clip_ids: Sequence[str], labels: np.ndarray, k: int) -> dict:
-        from sil_wheel.cluster_build import write_cluster_assignments
-        from sil_wheel.stores.cluster_topics import extract_topics_for_run, read_topics
-
+    def topic_fn(clip_ids, labels, k):
         labels = np.asarray(labels).astype(np.int64).reshape(-1)
         distances = np.zeros(len(labels), dtype=np.float32)  # unused for topics
         with tempfile.TemporaryDirectory() as tmp:
