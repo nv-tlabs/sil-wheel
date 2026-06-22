@@ -539,8 +539,11 @@ if __name__ == "__main__":
             f"saved at {path_to_output}"
         )
     else:
+        shard_glob = Path(
+            args.output.format(process_id="*", n_processes="*")
+        ).name
         parquet_files = sorted(
-            Path(path_to_output).parent.glob("**/*.parquet")
+            Path(path_to_output).parent.glob(shard_glob)
         )
         processed_clips = set()
         for pi in tqdm(parquet_files, desc="scanning prior shards"):
@@ -573,7 +576,6 @@ if __name__ == "__main__":
     )
     new_size = (800, 600)
 
-    # Initialize structures to store data
     save_every = 10
     counter = 0
 
