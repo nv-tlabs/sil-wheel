@@ -19,7 +19,10 @@ import time
 
 import pytest
 
-from sil_wheel.stores.classifier_search import ClassifierSearch
+from sil_wheel.stores.classifier_search import (
+    ClassifierSearch,
+    _compile_expression,
+)
 
 RUN_ID = "run-aaa"
 RUN_ID_MULTI = "run-bbb"
@@ -173,6 +176,52 @@ class TestExpression:
             result = classifier_store.filter_clips(ids, RUN_ID, expr)
             returned = {c for c, _ in result}
             assert "unknown-clip-xyz" not in returned
+
+
+class TestCompoundExpression:
+    def test_or_expression(self, classifier_store):
+        result = classifier_store.filter_clips(_all_ids(), RUN_ID, "p > 0.8 or p < 0.2")
+        returned = {c for c, _ in result}
+        assert returned == {"clip-00", "clip-08", "clip-09"}
+
+    def test_and_expression(self, classifier_store):
+        result = classifier_store.filter_clips(_all_ids(), RUN_ID, "p > 0.3 and p < 0.7")
+        returned = {c for c, _ in result}
+        assert returned == {"clip-03", "clip-04", "clip-05"}
+
+    def test_or_with_nested_range(self, classifier_store):
+        result = classifier_store.filter_clips(
+            _all_ids(), RUN_ID, "p > 0.85 or 0.45 < p < 0.65"
+        )
+        returned = {c for c, _ in result}
+        assert returned == {"clip-04", "clip-05", "clip-08", "clip-09"}
+
+    def test_not_expression(self, classifier_store):
+        result = classifier_store.filter_clips(_all_ids(), RUN_ID, "not (p > 0.5)")
+        returned = {c for c, _ in result}
+        assert returned == {f"clip-{i:02d}" for i in range(5)}
+
+
+class TestExpressionSafety:
+    @pytest.mark.parametrize("expr", [
+        "__import__('os')",
+        "p.tofile('/tmp/x')",
+        "np.where(p > 0.5)",
+        "len(p) > 0",
+        "9 ** 9 ** 9",
+        "p + 1 > 0.5",
+        "().__class__",
+    ])
+    def test_unsafe_expressions_rejected(self, expr):
+        with pytest.raises(ValueError):
+            _compile_expression(expr)
+
+    def test_unsafe_expression_rejected_through_filter(self, classifier_store):
+        with pytest.raises(ValueError):
+            classifier_store.filter_clips(_all_ids(), RUN_ID, "__import__('os')")
+
+    def test_compiled_predicate_is_cached(self):
+        assert _compile_expression("p > 0.5") is _compile_expression("p > 0.5")
 
 
 class TestMultiLabel:
