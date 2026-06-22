@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pickle
 from typing import Dict, List
 
 import numpy as np
@@ -49,14 +48,18 @@ class LogisticRegressionModel:
 
         self.model.fit(X, y)
         if output_directory is not None and scenario_name is not None:
-            with open(f"{output_directory}/LR_weights.pkl", "wb") as f:
-                pickle.dump(self.model, f)
+            np.savez(
+                f"{output_directory}/LR_weights.npz",
+                coef=self.model.coef_,
+                intercept=self.model.intercept_,
+            )
 
     @classmethod
     def from_weights(cls, path_to_weights: str):
-        with open(path_to_weights, "rb") as f:
-            model = pickle.load(f)
-        return cls(coefficients=model.coef_, intercept=model.intercept_)
+        with np.load(path_to_weights) as weights:
+            return cls(
+                coefficients=weights["coef"], intercept=weights["intercept"]
+            )
 
 
 def load_annotations(

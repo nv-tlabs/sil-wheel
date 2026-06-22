@@ -15,7 +15,6 @@
 """Build a classifier run from positive/negative samples."""
 import json
 import logging
-import pickle
 import time
 from pathlib import Path
 from typing import Optional
@@ -144,8 +143,21 @@ def write_predicted_scores(run_dir, scores):
 
 
 def write_lr_weights(run_dir, model):
-    with open(Path(run_dir) / "LR_weights.pkl", "wb") as f:
-        pickle.dump(model, f)
+    np.savez(
+        Path(run_dir) / "LR_weights.npz",
+        coef=model.coef_,
+        intercept=model.intercept_,
+    )
+
+
+def load_lr_weights(run_dir):
+    """Return ``(coef, intercept)`` arrays from a run's ``LR_weights.npz``.
+
+    Loaded with numpy's default ``allow_pickle=False`` so a tampered weights
+    file cannot execute code on load (unlike the old pickled-model format).
+    """
+    with np.load(Path(run_dir) / "LR_weights.npz") as weights:
+        return weights["coef"], weights["intercept"]
 
 
 def validate_run_dir(run_dir) -> None:
@@ -157,16 +169,15 @@ def validate_run_dir(run_dir) -> None:
     """
     run_dir = Path(run_dir)
 
-    weights_path = run_dir / "LR_weights.pkl"
+    weights_path = run_dir / "LR_weights.npz"
     if not weights_path.exists():
-        raise ValueError("missing LR_weights.pkl")
+        raise ValueError("missing LR_weights.npz")
     try:
-        with open(weights_path, "rb") as f:
-            model = pickle.load(f)
+        coef, intercept = load_lr_weights(run_dir)
     except Exception as e:
-        raise ValueError(f"LR_weights.pkl is not a valid pickle: {e}") from e
-    if not hasattr(model, "coef_") or not hasattr(model, "intercept_"):
-        raise ValueError("LR_weights.pkl does not look like a sklearn LR model")
+        raise ValueError(f"LR_weights.npz is not a valid .npz: {e}") from e
+    if coef.ndim != 2 or intercept.ndim != 1:
+        raise ValueError("LR_weights.npz does not look like LR weights")
 
     scores_path = run_dir / "predicted_scores.json"
     if not scores_path.exists():

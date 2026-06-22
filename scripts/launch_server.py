@@ -54,6 +54,7 @@ from botocore.exceptions import ClientError
 from RangeHTTPServer import RangeRequestHandler
 from sil_wheel.stores.autolabels_store import AutolabelsDataStore
 from sil_wheel.classifier_build import (
+    load_lr_weights,
     validate_run_dir as validate_classifier_run_dir,
 )
 from sil_wheel.cluster_build import validate_run_dir as validate_cluster_run_dir
@@ -1628,7 +1629,7 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                 parsed_path.path[len("/classifier/export/"):]
             ).strip("/")
             run_dir = Path(self.classifier_dir) / run_id
-            weights_path = run_dir / "LR_weights.pkl"
+            weights_path = run_dir / "LR_weights.npz"
             metadata_path = run_dir / "metadata.json"
 
             if not weights_path.exists():
@@ -1636,8 +1637,7 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                 return
 
             try:
-                with open(weights_path, "rb") as f:
-                    model = pickle.load(f)
+                coef, intercept = load_lr_weights(run_dir)
                 metadata = {}
                 if metadata_path.exists():
                     with open(metadata_path) as f:
@@ -1650,8 +1650,8 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                     "positive_labels": metadata.get("positive_labels", []),
                     "negative_labels": metadata.get("negative_labels", []),
                     "trained_by": metadata.get("trained_by"),
-                    "coefficients": model.coef_.tolist(),
-                    "intercept": model.intercept_.tolist(),
+                    "coefficients": coef.tolist(),
+                    "intercept": intercept.tolist(),
                 }
 
                 json_bytes = json.dumps(export_data, indent=2).encode("utf-8")

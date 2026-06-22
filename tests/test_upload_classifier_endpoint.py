@@ -210,7 +210,7 @@ def test_upload_round_trip(server, built_run):
     target = server["classifier_dir"] / "uploaded01"
     for name in (
         "metadata.json",
-        "LR_weights.pkl",
+        "LR_weights.npz",
         "predicted_scores.json",
         "positive_clips.json",
         "negative_clips.json",
@@ -248,7 +248,7 @@ def test_invalid_metadata_rejected(server, built_run, tmp_path):
     bad_dir = tmp_path / "bad"
     bad_dir.mkdir()
     for name in (
-        "LR_weights.pkl", "predicted_scores.json",
+        "LR_weights.npz", "predicted_scores.json",
         "positive_clips.json", "negative_clips.json",
     ):
         (bad_dir / name).write_bytes((built_run / name).read_bytes())
