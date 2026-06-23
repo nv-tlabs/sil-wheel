@@ -90,6 +90,15 @@ def get_install_requirements():
     ]
 
 
+def get_extras_require():
+    return {
+        "embedding-quality": [
+            "faiss-cpu",
+            "scikit-learn",
+        ],
+    }
+
+
 def setup_package():
     with open("README.md") as f:
         long_description = f.read()
@@ -114,6 +123,7 @@ def setup_package():
             ],
         },
         install_requires=get_install_requirements(),
+        extras_require=get_extras_require(),
     )
 
 
