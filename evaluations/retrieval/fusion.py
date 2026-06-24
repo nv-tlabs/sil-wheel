@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Per-modality fusion terms. Sum them across modalities to fuse rankings.
-
-Mirrors the ordinal-rank RRF used in ``sil_wheel.stores.search_utils.rrf_rank``;
-ties get arbitrary order (stable argsort), matching the core convention.
-"""
+"""Per-modality fusion terms. Sum them across modalities to fuse rankings."""
 import numpy as np
 
 
@@ -39,16 +35,9 @@ def rrf_term(sim, k=60):
 
 
 def zscore_term(sim):
-    """Per-row z-score contribution; ``(n_query, n_candidate)`` in and out.
-
-    Non-finite entries (e.g. BM25 ``-inf`` misses) are excluded from the
-    mean/std and mapped to ``-10`` in the output so they still rank below
-    every real hit.
-    """
+    """Per-row z-score of ``sim``; ``(n_query, n_candidate)`` in and out."""
     assert sim.ndim == 2, f"expected 2D sim, got shape {sim.shape}"
-    finite = np.isfinite(sim)
-    masked = np.where(finite, sim, np.nan).astype(np.float64)
-    mean = np.nanmean(masked, axis=1, keepdims=True)
-    std = np.nanstd(masked, axis=1, keepdims=True) + 1e-8
-    z = (masked - mean) / std
-    return np.where(finite, z, -10.0)
+    sim = sim.astype(np.float64)
+    mean = sim.mean(axis=1, keepdims=True)
+    std = sim.std(axis=1, keepdims=True) + 1e-8
+    return (sim - mean) / std

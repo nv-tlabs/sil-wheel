@@ -23,10 +23,6 @@ def _rrf(matrices):
     return sum(rrf_term(s) for s in matrices)
 
 
-def _zscore(matrices):
-    return sum(zscore_term(s) for s in matrices)
-
-
 def test_rrf_single_input_preserves_ranking():
     sim = np.array([[0.1, 0.5, 0.4], [0.8, 0.2, 0.6]], dtype=np.float32)
     fused = _rrf([sim])
@@ -58,10 +54,9 @@ def test_rrf_combination_can_outperform_components():
     assert fused_r1 >= max(visual_r1, caption_r1)
 
 
-def test_zscore_handles_neg_inf_misses():
-    visual = np.array([[0.4, 0.7, 0.3]], dtype=np.float32)
-    bm25 = np.array([[-np.inf, 5.0, -np.inf]], dtype=np.float32)
-    fused = _zscore([visual, bm25])
-    # The -inf entries must not produce NaN and must rank below the hit.
-    assert np.isfinite(fused).all()
-    assert fused.argmax(axis=1)[0] == 1
+def test_zscore_handles_constant_row():
+    # A zero-variance row must not divide by zero or produce NaN.
+    sim = np.array([[1.0, 2.0, 6.0], [5.0, 5.0, 5.0]], dtype=np.float32)
+    z = zscore_term(sim)
+    assert np.isfinite(z).all()
+    np.testing.assert_allclose(z.mean(axis=1), 0.0, atol=1e-6)

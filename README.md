@@ -20,7 +20,7 @@
   &nbsp;✦&nbsp;
   <a href="https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/tutorials.html">Tutorials &amp; Recipes</a>
   &nbsp;✦&nbsp;
-  <a href="#paper">Technical Report</a>
+  <a href="#citation">Technical Report</a>
 </p>
 
 <p align="center">
@@ -34,45 +34,50 @@ retrieval, visual region search, ego-trajectory shape and pattern
 matching, world-model filters, metadata filters, and classifier scores.
 
 Searches in SIL-Wheel are composable: users can combine any number of
-modalities and filters in a single query, and Wheel returns only the
+modalities and filters in a single query, and SIL-Wheel returns only the
 clips that satisfy all active constraints. Retrieved clips can then be
 validated, annotated, curated into datasets or benchmark slices, and
 used for model evaluation within the same system.
 
 ## Key Features
 
-- **Composable multi-modal search.** Combine caption full-text search,
-  caption embeddings, video embeddings, visual region search,
-  trajectory shape and pattern matching, classifier scores, metadata
-  filters, and world-model filters in a single query.
+- **Composable multi-modal search.** Combine multiple retrieval signals in a
+single query, including caption full-text search, caption embeddings, video
+embeddings, visual embeddings, trajectory shape and motion-pattern matching,
+classifier scores, perception-based object filters, and metadata filters.
 
-- **Flexible data ingestion.** Load videos and metadata from the
-  **Hugging Face Hub**, the **local filesystem**, or **S3** using the
-  same pipeline.
+- **Closed-loop data curation.** Move from **search → validation →
+curation → evaluation** in a single framework. Retrieve candidate clips,
+validate them through manual annotation or VLM Judge, expand and refine slices
+using classifiers and clustering, and evaluate models on the resulting curated
+subsets.
 
-- **End-to-end preprocessing pipeline.** Ready-to-run scripts under
-  `scripts/` support video transcoding, caption generation, embedding
-  extraction, trajectory statistics, clustering, and index construction.
-  Supported embedding backends include Cosmos-Embed1, Qwen3-VL,
-  PE-Core, and Florence2+SigLIP.
+- **Flexible raw video ingestion.** Run the same preparation pipeline on raw
+video from the **local filesystem**, an **S3** object store, or the **Hugging
+Face Hub**. Local and S3 inputs are raw `.mp4` files or `.tar` archives; Hugging
+Face datasets are `.tar` or `.zip` archives.
+
+- **End-to-end preprocessing pipeline.** Scripts under `scripts/` take
+  raw video and metadata all the way to populated search indices, with a
+  choice of captioning and embedding backends. See
+  [`docs/data-preparation.md`](docs/data-preparation.md) for the full
+  data preparation pipeline.
+
+- **Agentic workflows.** A set of skills that any agent (Cursor, Claude
+Code, or your own) can load to drive SIL-Wheel's search, data
+curation, and evaluation in natural language. See [`agent/`](agent/README.md)
+for setup and usage.
 
 - **Web UI and Python clients.** Use the full-featured **Web UI** for
   browsing, annotating, curating, and running model arenas, or query
-  Wheel programmatically through `WheelClient` and `WheelHTTPClient`.
+  SIL-Wheel programmatically through `WheelClient` and `WheelHTTPClient`.
   Both interfaces use the same search composition, ranking, and caching
   logic.
 
-- **Closed-loop data curation.** Move from **search → validation →
-  curation → evaluation** in a single framework: retrieve candidate
-  clips, validate them through manual annotation or VLM Judge, curate
-  slices using classifiers and clustering, and evaluate models on the
-  resulting slices.
+## Installation
 
-- **Agentic workflows.** Higher-level natural-language workflows can
-  call the same search, annotation, curation, and evaluation primitives
-  exposed by the Wheel service.
-
-## Getting Started
+SIL-Wheel runs on Python 3.12. Clone the repository and create the conda
+environment, which carries the heavy dependencies:
 
 ```bash
 git clone https://github.com/nv-tlabs/sil-wheel.git
@@ -82,40 +87,78 @@ conda activate wheel
 
 python setup.py build_ext --inplace
 pip install -e .
+```
 
-# perception_models supplies the `core` module that sil_wheel.embeddings imports
-# eagerly; without it the embedding/extraction stages crash with
-# "No module named 'core'". --no-deps so it doesn't downgrade transformers/numpy.
+The embedding and extraction stages import the `core` module from
+`perception_models`, so install it too. The `--no-deps` flag keeps it from
+downgrading `transformers` or `numpy`:
+
+```bash
 pip install --no-deps git+https://github.com/facebookresearch/perception_models.git
+```
 
-# Launch your Wheel server
-# This assumes the artifacts referenced in the YAML already exist.
+Two optional extras:
+
+- To stream videos directly from S3, install the AWS CLI with
+  `pip install awscli`.
+- Models are pulled from the Hugging Face Hub on first use, so authenticate to
+  reach gated checkpoints such as Cosmos-Embed1:
+
+  ```bash
+  pip install --upgrade huggingface_hub
+  hf auth login
+  ```
+
+`flash-attn` does not build cleanly against CUDA 13.0 and PyTorch 2.10. We
+recommend skipping it; the PyTorch fallback is slightly slower but works fine.
+
+## Quickstart
+
+The quickest way to have a working version of SIL-Wheel is to run one of the example
+walkthroughs. Each one downloads a dataset, runs the full preparation pipeline,
+builds every index, and starts a server with every search modality populated.
+They share the same `scripts/`, so they also serve as worked references for your
+own data.
+
+**nuScenes** is the simplest starting point. The public nuScenes mini split
+(10 scenes) needs no account and finishes in a few minutes on a single 4090,
+plus a one-time model download on the first run.
+
+```bash
+python examples/getting-started-nuscenes/setup_nuscenes.py
+```
+
+**Physical AI Autonomous Vehicles** runs the same pipeline on a slice of
+NVIDIA's [Physical AI Autonomous Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles)
+dataset, streamed from the Hugging Face Hub as `.zip` shards. The dataset is
+gated, so accept its license and run `hf auth login` first.
+
+```bash
+python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py --max-clips 20
+```
+
+See the [nuScenes](examples/getting-started-nuscenes/README.md) and
+[Physical AI](examples/getting-started-physical-ai-autonomous-vehicles/README.md)
+READMEs for prerequisites and the full set of options.
+
+If your artifacts are already prepared, launch a server directly from its
+config:
+
+```bash
 python scripts/launch_server.py config/wheel_launch_dev_server_config.yaml
 ```
 
-Open the bind address printed at startup (defaults to the
-`server.bindto` value in the YAML) in a browser.
+Open the bind address printed at startup (the `server.bindto` value in the
+YAML) in a browser.
 
-### Start from a Dataset
+## Python API
 
-We provide two example scripts to help you process a dataset and launch a
-SIL-Wheel server. Each script downloads the data, extracts captions and
-embeddings, and starts SIL-Wheel so you can try the full pipeline end to end.
+SIL-Wheel can also be driven directly from Python through two clients:
 
-Choose one of the following datasets:
-
-- [nuScenes](examples/getting-started-nuscenes/README.md), via `setup_nuscenes.py`
-- [Physical AI Autonomous Vehicles](examples/getting-started-physical-ai-autonomous-vehicles/README.md), via `setup_physical_ai.py`
-
-## Programmatic Access
-
-Wheel can also be used directly from Python. It provides two clients:
-
-- `WheelClient` for local access, when your Python process can directly
-  read the datasets, indices, metadata, and artifacts referenced in the
-  launch YAML.
-- `WheelHTTPClient` for remote access, when you want to connect to a
-  running Wheel server over HTTP.
+- `WheelClient` for local access, when your process can read the datasets,
+  indices, metadata, and artifacts referenced in the launch YAML.
+- `WheelHTTPClient` for remote access, when you connect to a running SIL-Wheel
+  server over HTTP.
 
 ### Local Client
 
@@ -149,10 +192,10 @@ print(df.head(10))
 
 ### HTTP Client
 
-Use `WheelHTTPClient` when connecting to an already running Wheel server.
-The client surface is identical to `WheelClient`; the only difference is
-that `result.scores` is empty for remote results (the server returns clip
-IDs only), so use `result.clip_ids` directly.
+Use `WheelHTTPClient` when connecting to an already running SIL-Wheel server. Its
+surface is identical to `WheelClient`, except that `result.scores` is empty for
+remote results (the server returns clip IDs only), so use `result.clip_ids`
+directly.
 
 ```python
 from sil_wheel.http_client import WheelHTTPClient
@@ -175,64 +218,19 @@ result = client.search_from_url(
 Full client surface, search composition, and ranking modes are in the
 [online documentation](https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/index.html).
 
-## Installation
-
-The conda environment carries the heavy dependencies:
-
-```bash
-conda env create -f environment.yml
-conda activate wheel
-python setup.py build_ext --inplace
-pip install -e .
-```
-
-To stream videos directly from S3, install the AWS CLI:
-
-```bash
-pip install awscli
-```
-
-Several embedding and captioning models are pulled from the Hugging
-Face Hub on first use. Authenticate so gated checkpoints (e.g.,
-Cosmos-Embed1) are reachable:
-
-```bash
-pip install --upgrade huggingface_hub
-hf auth login
-```
-
-`flash-attn` has compatibility issues with CUDA 13.0 + PyTorch 2.10.
-We recommend skipping it; PyTorch's fallback is slightly slower but
-fine for debugging.
-
-## QuickStart with SIL-Wheel
-
-The fastest way to see SIL-Wheel end-to-end is the **nuScenes mini**
-walkthrough under
-[`examples/getting-started-nuscenes/`](examples/getting-started-nuscenes/).
-A single script downloads the public nuScenes mini split, runs the
-full pre-processing pipeline, builds every index, and starts a server
-with every modality populated. The 10-scene mini split processes in just
-**a few minutes on a single 4090** (plus a one-time model download on the
-first run), no AWS account required.
-
-```bash
-python examples/getting-started-nuscenes/setup_nuscenes.py
-```
-
 ## Documentation
 
-📚 Full user and developer documentation — guides, tutorials, and the
-complete API reference — lives on the
+📚 Full user and developer documentation, including guides, tutorials, and the
+complete API reference, lives on the
 **[SIL-Wheel documentation site](https://research.nvidia.com/labs/sil/projects/sil-wheel-docs/index.html)**.
 
-For quick in-repo deep dives:
+For quick in-repo references:
 
 | Topic | Reference |
 | :--- | :--- |
-| Data preparation — video processing, embeddings, metadata, S3 upload | [`docs/data-preparation.md`](docs/data-preparation.md) |
-| Arena — blind model evaluation, manifest format, ELO ratings | [`docs/arena.md`](docs/arena.md) |
-| Bug reporting — Google-Sheets-backed form | [`docs/bug-reporting.md`](docs/bug-reporting.md) |
+| Data preparation: video processing, embeddings, metadata, and S3 upload | [`docs/data-preparation.md`](docs/data-preparation.md) |
+| Arena: blind model evaluation, manifest format, and ELO ratings | [`docs/arena.md`](docs/arena.md) |
+| Bug reporting: the Google Sheets backed form | [`docs/bug-reporting.md`](docs/bug-reporting.md) |
 
 ## Citation
 

@@ -13,12 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pickle
+
 import numpy as np
+import pandas as pd
+import pytest
 
-from embeddings_utils import score_per_video
+from embeddings_utils import (
+    load_florence_sigclip_embeddings,
+    load_subclip_caption_embeddings,
+    score_per_video,
+)
 
 
-def test_per_video_gallery_is_plain_matmul():
+def test_per_video_is_plain_matmul():
     text = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
     video = np.array(
         [[1.0, 0.0], [0.0, 1.0], [1.0, 0.0]], dtype=np.float32
@@ -29,7 +37,7 @@ def test_per_video_gallery_is_plain_matmul():
     )
 
 
-def test_multirow_gallery_max_pools_per_video():
+def test_multirow_max_pools_per_video():
     text = np.array([[1.0, 0.0]], dtype=np.float32)
     rows = np.array(
         [[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]], dtype=np.float32
@@ -50,3 +58,41 @@ def test_multirow_picks_best_subclip_per_query():
     video_ids = ["vA", "vB"]
     sim = score_per_video(text, rows, owners, video_ids)
     np.testing.assert_allclose(sim, [[0.7, 0.6], [0.9, 0.4]])
+
+
+def test_caption_loader_raises_on_missing_coverage(tmp_path):
+    p = tmp_path / "caption_embeddings_group_0_1.parquet"
+    pd.DataFrame(
+        {"clip_id": ["v1", "v2"], "embedding": [[1.0, 0.0], [0.0, 1.0]]}
+    ).to_parquet(p)
+    with pytest.raises(KeyError):
+        load_subclip_caption_embeddings(p, ["v1", "v2", "v3"])
+    matrix, owners = load_subclip_caption_embeddings(p, ["v1", "v2"])
+    assert owners == ["v1", "v2"]
+    assert matrix.shape == (2, 2)
+
+
+def _write_florence_shard(path, clip_ids):
+    with open(path, "wb") as f:
+        pickle.dump(
+            {
+                "embeddings": [np.ones(4, dtype=np.float32) for _ in clip_ids],
+                "items": [{"clip_id": c} for c in clip_ids],
+            },
+            f,
+        )
+
+
+def test_florence_loader_raises_on_missing_coverage(tmp_path):
+    _write_florence_shard(
+        tmp_path / "florence2_sigclip2_group_0_1.pkl", ["v1", "v2"]
+    )
+    with pytest.raises(KeyError):
+        load_florence_sigclip_embeddings(tmp_path, ["v1", "v2", "v3"])
+    _, owners = load_florence_sigclip_embeddings(tmp_path, ["v1", "v2"])
+    assert set(owners) == {"v1", "v2"}
+
+
+def test_florence_loader_raises_filenotfound_when_absent(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        load_florence_sigclip_embeddings(tmp_path, ["v1"])

@@ -13,45 +13,111 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ast
+import functools
 import json
-import re
 from pathlib import Path
 
 import numpy as np
 import simdjson
 from sil_wheel.stores.search_utils import project_starmap
 
-# Maximum number of (run_id, expression) results held in the filter cache.
-_FILTER_CACHE_SIZE = 10
+
+# Expression elements a probability filter may use.
+ALLOWED_NODES = (
+    ast.Expression, ast.Compare, ast.BoolOp, ast.BinOp, ast.UnaryOp,
+    ast.And, ast.Or, ast.Not, ast.Invert, ast.USub,
+    ast.BitAnd, ast.BitOr, ast.BitXor,
+    ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Eq, ast.NotEq,
+    ast.Name, ast.Load, ast.Constant,
+)
 
 
+class _NumpyBoolean(ast.NodeTransformer):
+    """Rewrite Python boolean logic into numpy elementwise ops so a predicate
+    evaluates correctly when ``p`` is an array of scores::
+
+        a and b      -> a & b
+        a or b       -> a | b
+        not a        -> ~a
+        lo < x < hi  -> (lo < x) & (x < hi)
+
+    Done on the AST rather than the string, which also sidesteps the
+    ``&``/``|`` operator-precedence trap of the textual form.
+    """
+
+    _BITWISE = {ast.And: ast.BitAnd, ast.Or: ast.BitOr}
+
+    def visit_BoolOp(self, node):
+        self.generic_visit(node)
+        op = self._BITWISE[type(node.op)]()
+        combined = node.values[0]
+        for value in node.values[1:]:
+            combined = ast.BinOp(left=combined, op=op, right=value)
+        return combined
+
+    def visit_UnaryOp(self, node):
+        self.generic_visit(node)
+        if isinstance(node.op, ast.Not):
+            return ast.UnaryOp(op=ast.Invert(), operand=node.operand)
+        return node
+
+    def visit_Compare(self, node):
+        self.generic_visit(node)
+        if len(node.ops) == 1:
+            return node
+        left = node.left
+        comparisons = []
+        for op, right in zip(node.ops, node.comparators):
+            comparisons.append(
+                ast.Compare(left=left, ops=[op], comparators=[right])
+            )
+            left = right
+        combined = comparisons[0]
+        for comparison in comparisons[1:]:
+            combined = ast.BinOp(left=combined, op=ast.BitAnd(), right=comparison)
+        return combined
+
+
+@functools.lru_cache(maxsize=128)
 def _compile_expression(expression):
-    """Compile a probability expression string into a predicate.
+    """Compile a probability filter string into a predicate ``f(p) -> mask``.
 
-    The expression uses ``p`` as the probability variable.  Any valid
-    Python boolean expression is accepted, including chained comparisons.
-    When ``p`` is a numpy array the predicate returns a boolean array,
-    enabling vectorized evaluation over all scores at once.
-
-    Chained comparisons like ``0.9 < p < 0.95`` are rewritten to
-    ``(0.9 < p) & (p < 0.95)`` so they work correctly with numpy arrays.
-
-    Examples::
+    ``p`` is the score (scalar or a numpy array of scores); the predicate
+    returns a bool / bool array, so it vectorizes over all scores at once.
+    Supports comparisons, chained comparisons, ``and`` / ``or`` / ``not``, and
+    bitwise ``& | ~`` over ``p`` and numeric literals. Examples::
 
         "p > 0.95"
-        "p < 0.2"
         "0.9 < p < 0.95"
+        "p > 0.8 or p < 0.2"
+
+    The expression is parsed and checked against a strict allowlist before it
+    runs: it may only reference ``p`` and cannot call functions or reach
+    attributes, so no arbitrary code can execute. Compiled predicates are
+    memoised per expression (compilation is otherwise repeated on cache
+    misses in ``filter_clips``).
     """
-    m = re.match(
-        r"^([\d.]+)\s*(<=?)\s*p\s*(<=?)\s*([\d.]+)$", expression.strip()
-    )
-    if m:
-        lo, lo_op, hi_op, hi = m.group(1), m.group(2), m.group(3), m.group(4)
-        expression = f"({lo} {lo_op} p) & (p {hi_op} {hi})"
-    _globals = {"__builtins__": {}, "np": np}
-    fn = "def predicate(p):\n    return " + expression
-    exec(fn, _globals)
-    return _globals["predicate"]
+    tree = ast.parse(expression.strip(), mode="eval")
+    for node in ast.walk(tree):
+        if not isinstance(node, ALLOWED_NODES):
+            raise ValueError(
+                f"disallowed element in probability expression: "
+                f"{type(node).__name__}"
+            )
+        if isinstance(node, ast.Name) and node.id != "p":
+            raise ValueError(f"only the variable 'p' is allowed, got {node.id!r}")
+        if isinstance(node, ast.Constant) and not isinstance(
+            node.value, (int, float)
+        ):
+            raise ValueError("only numeric literals are allowed")
+    tree = ast.fix_missing_locations(_NumpyBoolean().visit(tree))
+    code = compile(tree, "<probability_expression>", "eval")
+
+    def predicate(p):
+        return eval(code, {"__builtins__": {}}, {"p": p})
+
+    return predicate
 
 
 class ClassifierSearch:
@@ -154,14 +220,16 @@ class ClassifierSearch:
             expr_mask = self._filter_cache.pop(cache_key)
             self._filter_cache[cache_key] = expr_mask
         else:
-            predicate = _compile_expression(expression)
             try:
+                predicate = _compile_expression(expression)
                 expr_mask = predicate(scores_arr)
             except ValueError as e:
                 raise ValueError(
                     f"Invalid probability expression {expression!r}: {e}"
                 ) from e
-            if len(self._filter_cache) >= _FILTER_CACHE_SIZE:
+
+            # Limit the _filter_cache to 10
+            if len(self._filter_cache) >= 10:
                 del self._filter_cache[next(iter(self._filter_cache))]
             self._filter_cache[cache_key] = expr_mask
 

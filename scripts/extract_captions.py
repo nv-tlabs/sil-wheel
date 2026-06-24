@@ -539,8 +539,11 @@ if __name__ == "__main__":
             f"saved at {path_to_output}"
         )
     else:
+        shard_glob = Path(
+            args.output.format(process_id="*", n_processes="*")
+        ).name
         parquet_files = sorted(
-            Path(path_to_output).parent.glob("**/*.parquet")
+            Path(path_to_output).parent.glob(shard_glob)
         )
         processed_clips = set()
         for pi in tqdm(parquet_files, desc="scanning prior shards"):
@@ -573,7 +576,6 @@ if __name__ == "__main__":
     )
     new_size = (800, 600)
 
-    # Initialize structures to store data
     save_every = 10
     counter = 0
 
@@ -621,5 +623,8 @@ if __name__ == "__main__":
 
         t_a = time.time()
 
-    data = atomic_save_parquet(data, path_to_output)
-    print(f"Output with {len(set(data['clip_id']))} clips saved at {path_to_output}")
+    if data.empty:
+        print(f"No new clips to process; leaving {path_to_output} untouched")
+    else:
+        data = atomic_save_parquet(data, path_to_output)
+        print(f"Output with {len(set(data['clip_id']))} clips saved at {path_to_output}")

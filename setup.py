@@ -90,6 +90,24 @@ def get_install_requirements():
     ]
 
 
+def get_extras_require():
+    return {
+        # Reference-based caption-quality metrics (nlg + bertscore). Kept
+        # optional so the core package installs without the scoring stack.
+        "caption-quality": [
+            "pycocoevalcap",
+            "nltk",
+            "rouge-score",
+            "bert-score",
+        ],
+        # EVQAScore only. Pulls Ultralytics YOLO11 (AGPL-3.0) -- isolated here
+        # so it is never a transitive dependency of anything else.
+        "evqa": [
+            "ultralytics",
+        ],
+    }
+
+
 def setup_package():
     with open("README.md") as f:
         long_description = f.read()
@@ -114,6 +132,7 @@ def setup_package():
             ],
         },
         install_requires=get_install_requirements(),
+        extras_require=get_extras_require(),
     )
 
 

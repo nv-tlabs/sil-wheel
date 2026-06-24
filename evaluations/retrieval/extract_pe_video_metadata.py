@@ -13,14 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Extract per-video metadata (caption, category, ...) from the locally-cached
-``facebook/PE-Video`` tar shards into a parquet.
+"""Extract per-video metadata from cached ``facebook/PE-Video`` tar shards.
 
-Each shard is a WebDataset tar containing pairs ``<key>.mp4`` /
-``<key>.json``; this script walks the JSON sidecars and ignores the
-mp4 bytes. The resulting parquet feeds downstream benchmarks (e.g.
-PVD-Bench retrieval) and can also be uploaded into Wheel's caption
-store.
+Each shard is a WebDataset tar of ``<key>.mp4`` / ``<key>.json`` pairs;
+this reads the JSON sidecars (ignoring the video bytes) into a parquet.
 """
 import argparse
 import json
@@ -54,7 +50,7 @@ KEEP_FIELDS = [
 
 
 def extract_split(local_dir, split):
-    """Yield one row dict per ``<key>.json`` found in ``local_dir/<split>/*.tar``."""
+    """Yield one row dict per JSON sidecar in ``local_dir/<split>/*.tar``."""
     tar_paths = sorted((Path(local_dir) / split).glob("*.tar"))
     if not tar_paths:
         raise FileNotFoundError(
