@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
-
 import math
 
 import numpy as np
@@ -24,9 +22,7 @@ from embeddings_io import load_embeddings
 from metrics import cluster_metrics, few_shot_binary_knn, knn_purity
 
 
-def _two_blob_dataset(
-    *, n_pos: int = 80, n_neg: int = 80, dim: int = 16, seed: int = 0,
-) -> tuple[np.ndarray, np.ndarray]:
+def _two_blob_dataset(*, n_pos=80, n_neg=80, dim=16, seed=0):
     rng = np.random.default_rng(seed)
     center_pos = np.zeros(dim)
     center_neg = np.zeros(dim)
