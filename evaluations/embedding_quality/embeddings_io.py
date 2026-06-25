@@ -16,60 +16,37 @@
 
 """Public embedding input helpers.
 
-Every encoder is represented by one ``<name>.npz`` file with:
-
-* ``clip_ids``: row-aligned clip identifiers.
-* ``embeddings``: a 2D numeric array, one row per clip.
+Each encoder is one ``<name>.npz`` with row-aligned ``clip_ids`` + ``embeddings``.
 """
 
-from __future__ import annotations
-
+import sys
 import time
 from pathlib import Path
 
-import numpy as np
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_shared"))
+from emb_common import filter_to_ids, load_npz  # noqa: E402
 
 
-def load_embeddings(
-    embeddings_dir: Path,
-    name: str,
-    wanted: set[str],
-) -> tuple[list[str], np.ndarray]:
-    """Load and filter ``<embeddings_dir>/<name>.npz`` to wanted clip IDs."""
+def load_embeddings(embeddings_dir, name, wanted):
+    """Load ``<embeddings_dir>/<name>.npz`` and filter it to the wanted clip ids."""
     npz_path = embeddings_dir / f"{name}.npz"
     if not npz_path.exists():
         raise FileNotFoundError(npz_path)
 
     t0 = time.time()
-    data = np.load(npz_path, allow_pickle=True)
-    all_ids = [str(x) for x in data["clip_ids"]]
-    all_embeddings = np.asarray(data["embeddings"], dtype=np.float32)
-    assert all_embeddings.ndim == 2, (
-        f"{npz_path}: embeddings must be 2D, got {all_embeddings.shape}"
-    )
-    assert len(all_ids) == all_embeddings.shape[0], (
-        f"{npz_path}: {len(all_ids)} clip_ids for "
-        f"{all_embeddings.shape[0]} embedding rows"
-    )
+    all_ids, all_embeddings = load_npz(npz_path)
     assert len(set(all_ids)) == len(all_ids), f"{npz_path}: duplicate clip_ids"
-
-    rows = [i for i, clip_id in enumerate(all_ids) if clip_id in wanted]
-    if not rows:
-        elapsed = time.time() - t0
+    ids, X = filter_to_ids(all_ids, all_embeddings, wanted)
+    elapsed = time.time() - t0
+    if not ids:
         print(
-            f"[embeddings] {name}: 0 / {len(wanted)} clips matched "
-            f"({elapsed:.1f}s)",
+            f"[embeddings] {name}: 0 / {len(wanted)} clips matched ({elapsed:.1f}s)",
             flush=True,
         )
-        return [], np.zeros((0, all_embeddings.shape[1]), dtype=np.float32)
-
-    row_idx = np.asarray(rows, dtype=np.int64)
-    ids = [all_ids[i] for i in rows]
-    X = np.ascontiguousarray(all_embeddings[row_idx], dtype=np.float32)
-    elapsed = time.time() - t0
-    print(
-        f"[embeddings] {name}: {len(ids)} / {len(wanted)} clips matched, "
-        f"{X.shape} in {elapsed:.1f}s",
-        flush=True,
-    )
+    else:
+        print(
+            f"[embeddings] {name}: {len(ids)} / {len(wanted)} clips matched, "
+            f"{X.shape} in {elapsed:.1f}s",
+            flush=True,
+        )
     return ids, X

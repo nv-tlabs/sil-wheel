@@ -16,8 +16,6 @@
 
 """Create a tiny synthetic embedding-quality dataset for smoke tests."""
 
-from __future__ import annotations
-
 import argparse
 import csv
 import json
@@ -96,7 +94,7 @@ SIGNAL = {
 }
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--n-neg", type=int, default=160)
@@ -105,7 +103,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _slug(label: str) -> str:
+def _slug(label):
     return (
         label.lower()
         .replace(" ", "_")
@@ -114,11 +112,7 @@ def _slug(label: str) -> str:
     )
 
 
-def _unit_directions(
-    rng: np.random.Generator,
-    labels: list[str],
-    dim: int,
-) -> dict[str, np.ndarray]:
+def _unit_directions(rng, labels, dim):
     dirs = {}
     for label in labels:
         vec = rng.standard_normal(dim).astype(np.float32)
@@ -128,15 +122,10 @@ def _unit_directions(
     return dirs
 
 
-def _embedding_matrix(
-    rng: np.random.Generator,
-    clip_labels: dict[str, str | None],
-    encoder: str,
-    dim: int,
-) -> tuple[list[str], np.ndarray]:
+def _embedding_matrix(rng, clip_labels, encoder, dim):
     directions = _unit_directions(rng, LABELS, dim)
     ids = sorted(clip_labels)
-    rows: list[np.ndarray] = []
+    rows = []
     for clip_id in ids:
         label = clip_labels[clip_id]
         vec = rng.normal(scale=0.45, size=dim).astype(np.float32)
@@ -150,21 +139,21 @@ def _embedding_matrix(
     return ids, np.stack(rows).astype(np.float32)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     args = parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     embeddings_dir = args.out / "embeddings"
     embeddings_dir.mkdir(parents=True, exist_ok=True)
 
     rng = np.random.default_rng(args.seed)
-    clip_labels: dict[str, str | None] = {}
-    label_rows: list[dict[str, str]] = []
+    clip_labels = {}
+    label_rows = []
     for label in LABELS:
         for i in range(args.n_per_label):
             clip_id = f"{_slug(label)}_{i:04d}"
             clip_labels[clip_id] = label
             label_rows.append({"clip_id": clip_id, "label": label})
-    neg_rows: list[dict[str, str]] = []
+    neg_rows = []
     for i in range(args.n_neg):
         clip_id = f"negative_{i:04d}"
         clip_labels[clip_id] = None
