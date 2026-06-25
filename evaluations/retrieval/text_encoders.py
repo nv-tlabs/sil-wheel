@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Encode test captions with each model's text tower, cached to .npy."""
 import gc
 import hashlib
 from pathlib import Path
@@ -96,7 +95,7 @@ def _encode_qwen3_embedding(texts, model_name="Qwen/Qwen3-Embedding-8B"):
         _release(m)
 
 
-def _encode_siglip(texts, model_name="google/siglip2-base-patch16-224"):
+def _encode_siglip2(texts, model_name="google/siglip2-base-patch16-224"):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     processor = AutoProcessor.from_pretrained(model_name, use_fast=True)
     m = AutoModel.from_pretrained(model_name).to(device).eval()
@@ -118,7 +117,7 @@ def _encode_siglip(texts, model_name="google/siglip2-base-patch16-224"):
 
 
 def encode_text(encoder, texts, cache_dir):
-    """Encode ``texts`` with ``encoder``'s text tower; cached on disk by hash."""
+    """Encode ``texts`` with ``encoder``'s text tower, cached by hash."""
     cache = _cache_path(cache_dir, encoder, texts)
     if cache.exists():
         return np.load(cache)
@@ -128,8 +127,8 @@ def encode_text(encoder, texts, cache_dir):
         out = _encode_qwen3_vl(encoder, texts)
     elif encoder.startswith("pe_core_"):
         out = _encode_pe_core(encoder, texts)
-    elif encoder == "florence_sigclip":
-        out = _encode_siglip(texts)
+    elif encoder == "florence_sigclip2":
+        out = _encode_siglip2(texts)
     elif encoder == "caption_embedding":
         out = _encode_qwen3_embedding(texts)
     else:

@@ -15,7 +15,6 @@
 
 """End-to-end tests for `build_classifier_run` and `validate_run_dir`."""
 import json
-import pickle
 from pathlib import Path
 
 import faiss
@@ -92,7 +91,7 @@ def test_build_writes_expected_files(tmp_path, fake_corpus):
     assert run_dir.name == "run-test"
     for name in (
         "metadata.json",
-        "LR_weights.pkl",
+        "LR_weights.npz",
         "predicted_scores.json",
         "positive_clips.json",
         "negative_clips.json",
@@ -141,10 +140,9 @@ def test_lr_weights_persisted_and_loadable(tmp_path, fake_corpus):
         trained_by="alice",
         run_id="run-w",
     )
-    with open(Path(run_dir) / "LR_weights.pkl", "rb") as f:
-        model = pickle.load(f)
-    assert hasattr(model, "coef_")
-    assert hasattr(model, "intercept_")
+    with np.load(Path(run_dir) / "LR_weights.npz") as weights:
+        assert "coef" in weights.files
+        assert "intercept" in weights.files
 
 
 def test_predicted_scores_separate_classes(tmp_path, fake_corpus):
@@ -190,7 +188,7 @@ def test_validate_run_dir_accepts_built_run(tmp_path, fake_corpus):
 
 
 @pytest.mark.parametrize("missing", [
-    "LR_weights.pkl",
+    "LR_weights.npz",
     "predicted_scores.json",
     "positive_clips.json",
     "negative_clips.json",

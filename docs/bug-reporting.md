@@ -5,7 +5,8 @@
 
 Users can submit bug reports from the annotation and leaderboard pages via a button in the footer. Reports are appended to a Google Spreadsheet using a service account.
 
-**If not configured, the feature is silently disabled** — the server starts normally and bug reports are only logged to the server log.
+**If it is not configured, the feature is silently disabled.** The server starts
+normally and bug reports are only written to the server log.
 
 1. Create a Google Cloud service account and download its JSON key file.
 2. Share your target spreadsheet with the service account's email (Editor access).

@@ -121,11 +121,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output",
-        default="/path/to/datasets/{model}_embeddings/{split}/group_{process_id}_{n_processes}.parquet"
+        default="/lustre/fsw/portfolios/nvr/users/dpaschalidou/datasets/{model}_embeddings/{split}/group_{process_id}_{n_processes}.parquet"
     )
     parser.add_argument(
         "--model_assets_dir",
-        default="/path/to/internvideo2-stage2_1b-224p-f4",
+        default="/lustre/fsw/portfolios/nvr/users/dpaschalidou/internvideo2-stage2_1b-224p-f4",
         help="Path to the directory containing the internvideo2 weights"
     )
     parser.add_argument(
@@ -185,13 +185,13 @@ if __name__ == "__main__":
         "--profile",
         default=None,
         type=str,
-        help="AWS profile name for credentials (e.g., sil-wheel)",
+        help="AWS profile name for credentials (e.g., sil-gws-data)",
     )
     parser.add_argument(
         "--endpoint",
-        default="https://s3.example.com",
+        default="https://pdx.s8k.io",
         type=str,
-        help="S3 endpoint URL (default https://s3.example.com)",
+        help="S3 endpoint URL (default https://pdx.s8k.io)",
     )
     parser.add_argument(
         "--camera",
@@ -227,7 +227,9 @@ if __name__ == "__main__":
         processed_clips = set(sorted(data["clip_id"]))
     else:
         # Get all files in the output folder
-        parquet_files = sorted(Path(Path(path_to_output).parent).glob("**/*.parquet"))
+        parquet_files = sorted(Path(
+            Path(path_to_output).parent
+        ).glob(f"**/{args.model_type}_*.parquet"))
         processed_clips = set()
         for pi in tqdm(parquet_files):
             data = pd.read_parquet(pi)
@@ -299,7 +301,10 @@ if __name__ == "__main__":
         )
     # Remove duplicates if any
     data = data.drop_duplicates(subset="clip_id", keep="first")
-    data.to_parquet(path_to_output)
-    print(f"Output with {len(set(data['clip_id']))} clips saved at {path_to_output}")
+    if data.empty:
+        print(f"No new clips to process; leaving {path_to_output} untouched")
+    else:
+        data.to_parquet(path_to_output)
+        print(f"Output with {len(set(data['clip_id']))} clips saved at {path_to_output}")
     elapsed = time.time() - start
     print(f"Processing {counter} elements took {elapsed:.4f}s")

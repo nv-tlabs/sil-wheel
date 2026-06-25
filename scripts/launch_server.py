@@ -54,6 +54,7 @@ from botocore.exceptions import ClientError
 from RangeHTTPServer import RangeRequestHandler
 from sil_wheel.stores.autolabels_store import AutolabelsDataStore
 from sil_wheel.classifier_build import (
+    load_lr_weights,
     validate_run_dir as validate_classifier_run_dir,
 )
 from sil_wheel.cluster_build import validate_run_dir as validate_cluster_run_dir
@@ -247,11 +248,11 @@ class S3Fetcher:
     but marks itself as disabled; requests then fail with 503 instead of
     preventing the whole server from starting.
     """
-    def __init__(self, bucket: str):
+    def __init__(self, bucket: str, endpoint: str | None = None, profile: str = "sil-wheel"):
         self.bucket = bucket
         self.client = None
         try:
-            sess = boto3.Session(profile_name="sil-wheel", region_name="us-east-1")
+            sess = boto3.Session(profile_name=profile, region_name="us-east-1")
             self.client = sess.client(
                 "s3",
                 config=Config(
@@ -259,11 +260,11 @@ class S3Fetcher:
                     read_timeout=30,
                     connect_timeout=5,
                 ),
-                endpoint_url="https://s3.example.com",
+                endpoint_url=endpoint,
             )
         except Exception as e:
             print(
-                f"[S3Fetcher] AWS profile 'sil-wheel' not configured ({e}); "
+                f"[S3Fetcher] AWS profile {profile!r} not configured ({e}); "
                 "S3 keys will 503."
             )
 
@@ -386,8 +387,8 @@ class BaseFetcher:
     knows how to construct paths for videos, BEV files, or other data.
     """
 
-    def __init__(self, bucket: str):
-        self.s3 = S3Fetcher(bucket)
+    def __init__(self, bucket: str, endpoint: str | None = None, profile: str = "sil-wheel"):
+        self.s3 = S3Fetcher(bucket, endpoint, profile)
         self.local = LocalFileFetcher()
 
     def get_key(self, handler, path) -> tuple[str, dict]:
@@ -441,8 +442,8 @@ class BEVFetcher(BaseFetcher):
     filter so queries can be restricted to clips with available BEV outputs.
     """
 
-    def __init__(self, bucket, index_dir: str | None = None):
-        super().__init__(bucket)
+    def __init__(self, bucket, index_dir: str | None = None, endpoint: str | None = None, profile: str = "sil-wheel"):
+        super().__init__(bucket, endpoint, profile)
         self.clips_with_bev = None
         if index_dir is not None:
             index_path = Path(index_dir) / "clips_with_bev_set.pkl"
@@ -1628,7 +1629,7 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                 parsed_path.path[len("/classifier/export/"):]
             ).strip("/")
             run_dir = Path(self.classifier_dir) / run_id
-            weights_path = run_dir / "LR_weights.pkl"
+            weights_path = run_dir / "LR_weights.npz"
             metadata_path = run_dir / "metadata.json"
 
             if not weights_path.exists():
@@ -1636,8 +1637,7 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                 return
 
             try:
-                with open(weights_path, "rb") as f:
-                    model = pickle.load(f)
+                coef, intercept = load_lr_weights(run_dir)
                 metadata = {}
                 if metadata_path.exists():
                     with open(metadata_path) as f:
@@ -1650,8 +1650,8 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                     "positive_labels": metadata.get("positive_labels", []),
                     "negative_labels": metadata.get("negative_labels", []),
                     "trained_by": metadata.get("trained_by"),
-                    "coefficients": model.coef_.tolist(),
-                    "intercept": model.intercept_.tolist(),
+                    "coefficients": coef.tolist(),
+                    "intercept": intercept.tolist(),
                 }
 
                 json_bytes = json.dumps(export_data, indent=2).encode("utf-8")
@@ -2974,6 +2974,10 @@ def main(argv=None):
     apply_overrides(config, args.override)
     datastores_cfg = config["datastores"]
     server_cfg = config["server"]
+    # S3 connection settings come from config (not hardcoded) so they can't be
+    # baked into / sanitized out of the code; the fetchers below read them.
+    s3_endpoint = server_cfg.get("s3_endpoint")
+    s3_profile = server_cfg.get("s3_profile", "sil-wheel")
 
     print(f"Loading clips_to_apis from {config['clips_to_sil_apis']}")
     with open(config["clips_to_sil_apis"], "r") as f:
@@ -2985,6 +2989,8 @@ def main(argv=None):
     bev_fetcher = BEVFetcher(
         bev_cfg["s3_bucket"],
         index_dir=bev_cfg["metrics_index_dir"],
+        endpoint=s3_endpoint,
+        profile=s3_profile,
     )
 
     log_rss("startup")
@@ -3017,6 +3023,7 @@ def main(argv=None):
             clip_embed_dir,
             index_spec=clip_embed_cfg.get("index_spec", "IVF4096,PQ64x8"),
             mmap=clip_embed_cfg.get("mmap", False),
+            siglip_model=clip_embed_cfg.get("siglip_model", "google/siglip2-base-patch16-224"),
         )
     else:
         print(f"[visual] No embeddings under {clip_embed_dir}; using empty stub (no SigLIP loaded)")
@@ -3191,7 +3198,7 @@ def main(argv=None):
     websocket_thread.start()
 
     nurec_job = NurecJobRegistry()
-    video_fetcher = VideoFetcher("processed_data")
+    video_fetcher = VideoFetcher("processed_data", endpoint=s3_endpoint, profile=s3_profile)
     vlm_judge = None
     vlm_provider = server_cfg.get("vlm_provider", "auto")
     try:
@@ -3207,11 +3214,11 @@ def main(argv=None):
     arena_store = None
     if "arena_db" in datastores_cfg:
         arena_db_path = datastores_cfg["arena_db"]
-        arena_s3_sess = boto3.Session(profile_name="sil-wheel", region_name="us-east-1")
+        arena_s3_sess = boto3.Session(profile_name=s3_profile, region_name="us-east-1")
         arena_s3_client = arena_s3_sess.client(
             "s3",
             config=Config(max_pool_connections=10, read_timeout=30, connect_timeout=5),
-            endpoint_url="https://s3.example.com",
+            endpoint_url=s3_endpoint,
         )
         arena_store = ArenaStore(arena_db_path, arena_s3_client, "processed_data")
         print(f"Arena store initialized: {arena_db_path}")

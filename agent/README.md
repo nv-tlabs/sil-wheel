@@ -1,15 +1,15 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 
-# SIL Wheel Agent
+# SIL-Wheel Agent
 
-An AI agent interface to a **SIL Wheel** deployment - search and curate
-autonomous-driving video clips through natural language, visual/trajectory
+An AI agent interface to a **SIL-Wheel** deployment. Search and curate
+autonomous driving video clips through natural language, visual and trajectory
 similarity, trained classifiers, annotations, and clustering. Open this folder
 in **Cursor** or **Claude Code** and the agent picks up the skill automatically.
 
-This is a **client**. It ships no credentials and no hardcoded server - you
-point it at a SIL Wheel instance you run or have access to (`WHEEL_SERVER_URL`).
+This is a **client**. It ships no credentials and no hardcoded server; you
+point it at a SIL-Wheel instance you run or have access to (`WHEEL_SERVER_URL`).
 
 ## Quickstart (end users)
 
@@ -21,7 +21,7 @@ cp .env.template .env        # set WHEEL_SERVER_URL + WHEEL_USERNAME + WHEEL_PAS
 
 Then either:
 
-- **Open `agent/` in Cursor or Claude Code** - the editor auto-discovers
+- **Open `agent/` in Cursor or Claude Code.** The editor auto-discovers
   `.cursor/skills/sil-wheel/SKILL.md` (and the `.claude/` mirror), and you can
   just ask: *"find clips of construction zones in rain"*.
 - **Or use it directly**:
@@ -45,8 +45,8 @@ The skill is just files an agent reads. There are two ways to deliver it:
 1. **Clone / download the repo** (this folder). The `SKILL.md` and `knowledge/`
    docs are right here; the editor finds them. Zero hosting needed.
 2. **Hosted manifest** (for operators serving many users): host `SKILL.md` at a
-   URL and have your users' agents read it - it lists the other files to fetch
-   (`knowledge/*.md`, the SDK). Whoever runs a SIL Wheel deployment sets this up
+   URL and have your users' agents read it; it lists the other files to fetch
+   (`knowledge/*.md`, the SDK). Whoever runs a SIL-Wheel deployment sets this up
    once for their org and serves the files (over plain HTTP, no auth needed for
    the docs). This is how a fleet of agents onboard without each user cloning.
 
@@ -59,16 +59,17 @@ bash tests/run_clean_room.sh
 ```
 
 Copies only the public files into a throwaway dir, installs deps into a fresh
-venv, and runs (1) an offline unit smoke and (2) a clean-room end-to-end against
-a bundled **mock SIL Wheel server** - proving the documented workflows drive the
-API with no NVIDIA network and no live server. This is the harness you point at
-a real (even minimal) deployment to validate end to end.
+venv, then runs an offline unit smoke test and a clean-room end-to-end test
+against a bundled **mock SIL-Wheel server**. This proves the documented
+workflows drive the API with no NVIDIA network and no live server. It is the
+same harness you point at a real (even minimal) deployment to validate it end
+to end.
 
 ## Layout
 
 ```
 agent/
-  SKILL.md              # usage skill - an agent reads this to set up + drive the API
+  SKILL.md              # usage skill the agent reads to set up + drive the API
   README.md             # this file
   requirements.txt
   .env.template         # WHEEL_SERVER_URL / WHEEL_USERNAME / WHEEL_PASSWORD
@@ -80,7 +81,7 @@ agent/
     quickstart.py
   tests/
     test_public_smoke.py    # offline unit smoke (no network)
-    mock_wheel_server.py    # stdlib mock SIL Wheel server
+    mock_wheel_server.py    # stdlib mock SIL-Wheel server
     clean_room_smoke.py     # end-to-end usage workflows vs the mock
     run_clean_room.sh       # fresh-venv clean-room runner
   .cursor/skills/sil-wheel/SKILL.md   # editor auto-discovery (Cursor)

@@ -15,8 +15,7 @@ and serving videos straight off the local filesystem.
 ## Prerequisites
 
 * The SIL-Wheel conda env from the main README is already created and
-  active (`conda activate wheel`). This walkthrough does not re-install
-  the base dependencies; it only adds this example's extras on top.
+  active (`conda activate wheel`).
 * Linux, Python 3.12.
 * `ffmpeg` and `ffprobe` on `PATH` (`sudo apt install ffmpeg`).
 * A CUDA GPU. The pipeline was developed on a single RTX 4090. Skip GPU
@@ -27,15 +26,16 @@ and serving videos straight off the local filesystem.
 * ~15 GB free disk for v1.0-mini (4 GB nuScenes archive, ~5 GB extracted +
   encoded videos, embeddings + FAISS indexes).
 * Internet access for the nuScenes download and HuggingFace model downloads
-  on first use (Cosmos, Qwen2.5-VL, Qwen3-Embedding, Florence2, SigLIP).
+  on first use (Cosmos, Qwen2.5-VL, Qwen3-Embedding, Florence2, SigCLIP2).
 
 ## Setup
 
 Run from the SIL-Wheel repository root with the `wheel` conda env active:
 
 ```bash
-# 1. Install this example's extras (nuscenes-devkit, vllm, qwen-vl-utils, …).
-pip install -r examples/getting-started-nuscenes/requirements.txt
+# 1. Install this example's extras.
+conda install -n wheel -c conda-forge ffmpeg -y
+pip install --no-deps nuscenes-devkit
 
 # 2. Run the full pipeline. The 10-scene mini split takes a few minutes on a
 #    4090 (plus a one-time model download on first run); larger splits take
@@ -118,7 +118,7 @@ setup_nuscenes.py
 │   └── load_captions_into_db        FTSCaptionStore.insert_from_dataframe
 ├── run_extract_caption_embeddings   Qwen3-Embedding-0.6B → caption_embeddings/*.parquet
 │   └── materialize_caption_embeddings_index   FAISS index files (Flat)
-├── run_extract_visual_embeddings    Florence2-base + SigLIP → visual_embeddings/*.pkl
+├── run_extract_visual_embeddings    Florence2-base + SigCLIP2 → visual_embeddings/*.pkl
 │   └── materialize_visual_embeddings_index   FAISS index files (Flat)
 ├── extract_nuscenes_trajectories    nuscenes-devkit ego_pose → safetensors
 │   └── build_trajectory_memmap_and_index     memmap + FAISS (full / 10s / 5s, Flat)
@@ -140,7 +140,7 @@ modality populated, alongside all the on-disk artifacts the server reads.
 | Caption full-text search | Qwen2.5-VL captions | `FTSCaptionStore` |
 | Cosmos text→video / clip→clip | `cosmos_embed1_448p` | `CosmosEmbeddingsStore` |
 | Caption-embedding semantic search | `Qwen3-Embedding-0.6B` | `CaptionEmbeddingsStore` |
-| Visual text→region search | Florence2 + SigLIP | `Florence2SigCLIPEmbeddingStore` |
+| Visual text→region search | Florence2 + SigCLIP2 | `Florence2SigCLIPEmbeddingStore` |
 | Trajectory pattern (`hard_braking`, `stop_go`, …) | nuScenes ego_pose | `TrajectoryStore` |
 | Trajectory shape (clip→clip) | nuScenes ego_pose | `TrajectoryStore` |
 | Country / data-source filters | metadata in `annotations.db` | `SQLiteDataStore` |
@@ -181,7 +181,7 @@ directories to exist.
 
 ## What is intentionally not built
 
-* Perception-based search (object class / count / proximity / direction) —
+* Perception-based search (object class / count / proximity / direction):
   only an empty `wm_stats.parquet` stub is written, so it returns nothing.
 * BEV viewer / metrics filter (no `predictions/` data populated).
 * Arena evaluation mode.
@@ -200,7 +200,7 @@ directories to exist.
   0.7) or `--max-model-len` (default 32768). The default is already tuned
   to not OOM a 4090 alongside ~2 GB held by another process.
 * **HuggingFace download stalls.** First launch pulls Cosmos / Qwen2.5-VL /
-  Qwen3-Embedding / Florence2 / SigLIP weights. Ensure `huggingface_hub`
+  Qwen3-Embedding / Florence2 / SigCLIP2 weights. Ensure `huggingface_hub`
   can reach the hub (proxy / token).
 * **"Address already in use".** Port 8012 is busy; pass `--port 18012` so
   the generated config binds elsewhere.

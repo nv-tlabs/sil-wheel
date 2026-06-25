@@ -20,8 +20,16 @@ from typing import Any, Dict, List, Optional
 
 import torch
 from PIL import Image
-from qwen_vl_utils import process_vision_info
 from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+
+try:
+    from qwen_vl_utils import process_vision_info
+except ImportError:
+    # Optional local-backend dependency. Importing this module (and the
+    # LocalVLMClient class) stays cheap so the cloud providers in
+    # get_vlm_client don't require it; constructing LocalVLMClient raises
+    # a clear error below if it's genuinely missing.
+    process_vision_info = None
 
 from sil_wheel.llm.base import BaseVLMClient
 
@@ -88,6 +96,12 @@ class LocalVLMClient(BaseVLMClient):
     def _ensure_loaded(self):
         if self._model is not None:
             return
+        if process_vision_info is None:
+            raise ImportError(
+                "LocalVLMClient requires the 'qwen_vl_utils' package. Install it "
+                "with `pip install qwen-vl-utils`, or use a cloud provider by "
+                "setting NV_INFERENCE_API_KEY or OPENAI_API_KEY."
+            )
         logger.info(
             "Loading local VLM %s (first call, may take a moment)...",
             self.model_name,

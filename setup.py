@@ -96,6 +96,19 @@ def get_extras_require():
             "faiss-cpu",
             "scikit-learn",
         ],
+        # Reference-based caption-quality metrics (nlg + bertscore). Kept
+        # optional so the core package installs without the scoring stack.
+        "caption-quality": [
+            "pycocoevalcap",
+            "nltk",
+            "rouge-score",
+            "bert-score",
+        ],
+        # EVQAScore only. Pulls Ultralytics YOLO11 (AGPL-3.0) -- isolated here
+        # so it is never a transitive dependency of anything else.
+        "evqa": [
+            "ultralytics",
+        ],
     }
 
 

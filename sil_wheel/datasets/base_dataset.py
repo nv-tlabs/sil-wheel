@@ -27,6 +27,7 @@ import tarfile
 import threading
 from tqdm import tqdm
 import queue
+import zipfile
 
 import boto3
 from botocore.config import Config
@@ -58,6 +59,53 @@ def get_path_to_data(path_to_files):
         raise Exception(f"Unsupported file type for path_to_files: {path_to_files}")
 
     return [pi for pi in path_to_data if pi.endswith(".mp4") or pi.endswith(".tar")]
+
+
+def matches_patterns(path, allow_patterns):
+    """True if path matches any glob in allow_patterns (or if no
+    patterns are given). Shared by the HuggingFace tar/zip datasets."""
+    if not allow_patterns:
+        return True
+    return any(fnmatch.fnmatch(path, p) for p in allow_patterns)
+
+
+def select_hf_archives(repo_files, allow_patterns, suffix):
+    """Sorted repo files ending in suffix that pass allow_patterns."""
+    return sorted(
+        f for f in repo_files
+        if f.endswith(suffix) and matches_patterns(f, allow_patterns)
+    )
+
+
+def download_hf_archive_shards(
+    repo_id,
+    allow_patterns,
+    suffix,
+    process_id,
+    n_processes,
+    cache_dir,
+    repo_files=None,
+):
+    """Select, shard and download this rank's HuggingFace archive shards.
+
+    repo_files is reused when dataset_factory already listed the repo.
+    Returns (local_dir, [local archive paths]).
+    """
+    if not repo_id:
+        raise ValueError("HuggingFace dataset requires repo_id")
+    if repo_files is None:
+        repo_files = HfApi().list_repo_files(repo_id, repo_type="dataset")
+    shard = select_hf_archives(repo_files, allow_patterns, suffix)[
+        process_id::n_processes
+    ]
+    local_dir = snapshot_download(
+        repo_id=repo_id,
+        repo_type="dataset",
+        allow_patterns=shard,
+        cache_dir=cache_dir,
+        max_workers=8,
+    )
+    return local_dir, [Path(local_dir) / f for f in shard]
 
 
 class FilesDataset:
@@ -226,7 +274,7 @@ class TarsDataset:
         return video_buffer, clip_id.split(".")[0], camera
 
 
-class HuggingFaceDataset:
+class HuggingFaceTarDataset:
     """Iterate a HuggingFace dataset that ships as tar shards.
 
     On construction this class first asks the HuggingFace Hub for the
@@ -249,32 +297,18 @@ class HuggingFaceDataset:
         cache_dir: str | None = None,
         clips_to_exclude: list[str] = None,
         camera_filter: str | None = None,
+        repo_files: list[str] | None = None,
     ):
-        if not repo_id:
-            raise ValueError("HuggingFaceDataset requires repo_id")
-
-        api = HfApi()
-        all_files = api.list_repo_files(repo_id, repo_type="dataset")
-        matching_tars = sorted(
-            f for f in all_files
-            if f.endswith(".tar") and self._matches(f, allow_patterns)
+        local_dir, local_tar_paths = download_hf_archive_shards(
+            repo_id, allow_patterns, ".tar",
+            process_id, n_processes, cache_dir, repo_files,
         )
-        tars_chunk = matching_tars[process_id::n_processes]
-
-        local_dir = snapshot_download(
-            repo_id=repo_id,
-            repo_type="dataset",
-            allow_patterns=tars_chunk,
-            cache_dir=cache_dir,
-            max_workers=8,
-        )
-        local_tar_paths = [Path(local_dir) / f for f in tars_chunk]
         manifest_path = (
             Path(local_dir)
             / f"hf_manifest_p{process_id}_n{n_processes}.json"
         )
         # The manifest's values are the tar paths it was built from;
-        # if they don't match this run's tars_chunk the cache is from
+        # if they don't match this run's downloaded shards the cache is from
         # a different --hf-allow-patterns invocation and must be
         # regenerated. Without this check the cached manifest from a
         # narrower previous slice is reused silently.
@@ -298,12 +332,6 @@ class HuggingFaceDataset:
             camera_filter=camera_filter,
             cameras=[None],
         )
-
-    @staticmethod
-    def _matches(path, allow_patterns):
-        if not allow_patterns:
-            return True
-        return any(fnmatch.fnmatch(path, p) for p in allow_patterns)
 
     @staticmethod
     def _build_manifest(tar_paths, out_path):
@@ -335,6 +363,86 @@ class HuggingFaceDataset:
 
     def __getitem__(self, idx):
         return self._inner[idx]
+
+
+class HuggingFaceZipDataset:
+    """Iterate a HuggingFace dataset that ships its videos in .zip shards.
+
+    Datasets such as nvidia/PhysicalAI-Autonomous-Vehicles store one .zip per
+    (sensor, chunk) instead of WebDataset-style .tar shards. The zip analogue of
+    HuggingFaceTarDataset.
+
+    Member names follow <clip_id>.<camera>.mp4 where clip_id is a UUID (no dots)
+    and camera uses underscores, so both are recovered by splitting the filename
+    on ".". A dataset whose members are bare <clip_id>.mp4 (no camera token)
+    yields camera=None.
+    """
+
+    def __init__(
+        self,
+        process_id: int = 0,
+        n_processes: int = 1,
+        repo_id: str = None,
+        allow_patterns: list[str] = None,
+        cache_dir: str | None = None,
+        clips_to_exclude: list[str] = None,
+        camera_filter: str | None = None,
+        repo_files: list[str] | None = None,
+    ):
+        local_dir, self._zip_paths = download_hf_archive_shards(
+            repo_id, allow_patterns, ".zip",
+            process_id, n_processes, cache_dir, repo_files,
+        )
+        self._clips_to_exclude = set(clips_to_exclude) if clips_to_exclude else set()
+        self._camera_filter = camera_filter
+
+        # Build the (zip_path, member_name, clip_id, camera) work list up
+        # front so __len__ is exact and iteration is a simple scan. camera_filter
+        # is applied here at the member level (like the tar reader), so a clip's
+        # other-camera videos in the same zip are skipped.
+        self._members = []
+        for zip_path in tqdm(self._zip_paths, desc="Scanning HF zip shards"):
+            try:
+                with zipfile.ZipFile(zip_path) as zf:
+                    names = zf.namelist()
+            except (zipfile.BadZipFile, FileNotFoundError) as e:
+                print(f"Skipping unreadable zip {zip_path}: {e}")
+                continue
+            for member_name in names:
+                if not member_name.endswith(".mp4"):
+                    continue
+                clip_id, camera = self._parse_member(member_name)
+                if camera_filter and camera != camera_filter:
+                    continue
+                self._members.append((zip_path, member_name, clip_id, camera))
+        self._members.sort(key=lambda m: (m[2], m[3] or ""))
+
+    @staticmethod
+    def _parse_member(member_name: str) -> tuple[str, str | None]:
+        stem = Path(member_name).name[: -len(".mp4")]
+        parts = stem.split(".")
+        clip_id = parts[0]
+        camera = parts[1] if len(parts) > 1 else None
+        return clip_id, camera
+
+    @functools.lru_cache(maxsize=16)
+    def _open_zip(self, zip_path):
+        return zipfile.ZipFile(zip_path, "r")
+
+    def __len__(self):
+        return len(self._members)
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+    def __getitem__(self, idx: int):
+        zip_path, member_name, clip_id, camera = self._members[idx]
+        if clip_id in self._clips_to_exclude:
+            return None, clip_id, camera
+        with self._open_zip(zip_path).open(member_name) as f:
+            video_buffer = io.BytesIO(f.read())
+        return video_buffer, clip_id, camera
 
 
 class S3ObjectFetcher:
@@ -619,7 +727,17 @@ def dataset_factory(
     camera_filter: str | None = None,
 ):
     if hf_repo_id is not None:
-        return HuggingFaceDataset(
+        # A dataset ships a single archive format, so pick the reader from the
+        # first matching .zip/.tar shard (mirrors the local first_path check
+        # below). repo_files is reused by the reader to avoid a second listing.
+        repo_files = HfApi().list_repo_files(hf_repo_id, repo_type="dataset")
+        first_archive = next(
+            (f for f in repo_files
+             if f.endswith((".zip", ".tar")) and matches_patterns(f, hf_allow_patterns)),
+            "",
+        )
+        hf_cls = HuggingFaceZipDataset if first_archive.endswith(".zip") else HuggingFaceTarDataset
+        return hf_cls(
             process_id=process_id,
             n_processes=n_processes,
             repo_id=hf_repo_id,
@@ -627,6 +745,7 @@ def dataset_factory(
             cache_dir=hf_cache_dir,
             clips_to_exclude=clips_to_exclude,
             camera_filter=camera_filter,
+            repo_files=repo_files,
         )
 
     with open(path_to_files, "r") as f:

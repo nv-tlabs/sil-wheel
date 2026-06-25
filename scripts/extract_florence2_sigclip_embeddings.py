@@ -345,7 +345,7 @@ def main():
     parser.add_argument(
         "--output",
         default=(
-            "/path/to/visual_embeddings/"
+            "/lustre/fsw/portfolios/nvr/users/dpaschalidou/visual_embeddings/"
             "florence2_siglip_features_group_{process_id}_{n_processes}.pkl"
         ),
     )
@@ -359,13 +359,13 @@ def main():
         "--profile",
         default=None,
         type=str,
-        help="AWS profile name for credentials (e.g., sil-wheel)",
+        help="AWS profile name for credentials (e.g., sil-gws-data)",
     )
     parser.add_argument(
         "--endpoint",
-        default="https://s3.example.com",
+        default="https://pdx.s8k.io",
         type=str,
-        help="S3 endpoint URL (default https://s3.example.com)",
+        help="S3 endpoint URL (default https://pdx.s8k.io)",
     )
     add_hf_dataset_args(parser)
 
@@ -386,7 +386,10 @@ def main():
         embeddings_shards = []
         items = []
         seen_clip_ids = set()
-        sibling_ckpts = sorted(Path(output_path).parent.glob("**/*.pkl"))
+        shard_glob = Path(
+            args.output.format(process_id="*", n_processes="*")
+        ).name
+        sibling_ckpts = sorted(Path(output_path).parent.glob(shard_glob))
         for pi in tqdm(sibling_ckpts, desc="scanning prior shards"):
             try:
                 other = load_checkpoint(str(pi))
@@ -531,14 +534,17 @@ def main():
             f"{len(embeddings)} embeddings vs {len(items)} metadata items"
         )
 
-    save_checkpoint(
-        output_path,
-        {"embeddings": embeddings, "items": items},
-    )
-    elapsed = time.time() - start
-    print(f"Final save to {output_path}")
-    print(f"Processed {processed_since_save} clips in {elapsed:.2f}s")
-    print(f"Saved {len(embeddings)} embedding rows")
+    if len(items) == 0:
+        print(f"No new clips to process; leaving {output_path} untouched")
+    else:
+        save_checkpoint(
+            output_path,
+            {"embeddings": embeddings, "items": items},
+        )
+        elapsed = time.time() - start
+        print(f"Final save to {output_path}")
+        print(f"Processed {processed_since_save} clips in {elapsed:.2f}s")
+        print(f"Saved {len(embeddings)} embedding rows")
 
 
 if __name__ == "__main__":

@@ -306,6 +306,7 @@ class WheelClient(WheelClientBase):
             visual_cfg["embeddings_dir"],
             index_spec=visual_cfg.get("index_spec", "IVF4096,PQ64x8"),
             mmap=visual_cfg.get("mmap", False),
+            siglip_model=visual_cfg.get("siglip_model", "google/siglip2-base-patch16-224"),
         )
 
         caption_embed_cfg = ds_cfg["caption_embed_store"]
