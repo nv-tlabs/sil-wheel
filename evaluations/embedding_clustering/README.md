@@ -18,7 +18,7 @@ Cluster each embedding on the same clips, name every cluster from its members' c
 Each step writes plain files the next one reads. All paths are passed in. Run with `numpy`, `scikit-learn`, `pandas`, `matplotlib`, `umap-learn`, `boto3`, `decord`, `Pillow`, and (for `preindex_compare`) `faiss`; set `PYTHONPATH=$REPO` so `sil_wheel` imports.
 
 ```
-ingest_raw_embeddings.py    raw dumps -> one deduped <encoder>.npz
+ingest_raw_embeddings.py    wheel-data embeddings -> one deduped <encoder>.npz
 prep.py pool                the clip-ids covered by all three embeddings
 cluster_raw.py              cluster each embedding (flat; --hierarchical for a taxonomy)
 make_figures.py themes      name each cluster with an LLM (keywords -> one phrase)
@@ -30,12 +30,23 @@ Two clustering passes feed the figures: a small **k=50 exact** pass per embeddin
 
 ### 1. Ingest and find the shared pool
 
+First produce a Physical AI wheel-data directory with the public getting-started example, which downloads the dataset from HuggingFace and runs the extract steps (Cosmos / caption / Florence-2+SigLIP embeddings + captions DB):
+
 ```bash
-python ingest_raw_embeddings.py --root "$RAW_DUMPS" --out ./npz --encoders cosmos caption visual --pool-name pai
-python prep.py pool --wheel-data-dir "$WHEEL_DATA_DIR" --out ./emb_pools
+python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py \
+    --workdir ./wheel-data-physical-ai --chunks 0-3
 ```
 
-One `<encoder>.npz` (`clip_ids`, `embeddings`) per encoder, plus clip-id pools (`full_*`, `large_*`, optional `pai_*`) of clips covered by all three embeddings.
+Then ingest those embeddings into one `<encoder>.npz` (`clip_ids`, `embeddings`) per encoder:
+
+```bash
+python ingest_raw_embeddings.py --root ./wheel-data-physical-ai --out ./npz \
+    --encoders cosmos caption visual --pool-name pai
+```
+
+`ingest_raw_embeddings.py` also writes `pai_clip_ids.json` — the clips covered by **all** requested encoders — which `cluster_raw.py --pool` uses to keep every embedding on the same clips. Set `CAPTIONS_DB=./wheel-data-physical-ai/captions.db` for the topic steps below.
+
+> Internal research dumps (`<root>/<encoder>/physical_ai/{avfoundation,alpamayo}/...`, plus the qwen3_vl / pe_core encoders) ingest the same way with `--layout internal`. The large-scale, after-index passes below (`prep.py pool` + `run_full_cluster.sh`) read a served FAISS index and are internal-only; the public flow uses the exact-vector `ingest -> cluster_raw` path.
 
 ### 2. Cluster each embedding (k=50, exact)
 
