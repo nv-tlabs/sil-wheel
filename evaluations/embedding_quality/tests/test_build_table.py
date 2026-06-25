@@ -13,15 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import annotations
-
 import csv
 import json
 
 import build_table
 
 
-def _label_metrics(base: float, n_pos: int = 10) -> dict:
+def _label_metrics(base, n_pos=10):
     return {
         "n_pos": n_pos,
         "n_neg": 100,
@@ -36,7 +34,7 @@ def _label_metrics(base: float, n_pos: int = 10) -> dict:
     }
 
 
-def _embedding(per_label_base: float) -> dict:
+def _embedding(per_label_base):
     return {
         "embedding": "unused",
         "n_dims": 4,

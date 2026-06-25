@@ -15,7 +15,7 @@ Three embeddings cluster the **same** pool of clips:
 
 Cluster each embedding on the same clips, name every cluster from its members' captions, and compare. That surfaces which scene groups *all* embeddings recover (a property of the data), where they *differ* in emphasis, and how a coarse cluster refines into finer ones. A separate check measures how much the PQ serving index shifts the clustering versus exact vectors.
 
-Each step writes plain files the next one reads. All paths are passed in. Run with `numpy`, `scikit-learn`, `pandas`, `matplotlib`, `umap-learn`, `boto3`, `decord`, `Pillow`, and (for `preindex_compare`) `faiss`; set `PYTHONPATH=$REPO` so `sil_wheel` imports.
+Each step writes plain files the next one reads, and all paths are passed in. Install the heavy deps with `pip install -e ".[embedding-clustering]"` (adds `faiss-cpu` + `scikit-learn`; the rest — `numpy`, `pandas`, `matplotlib`, `umap-learn`, `boto3`, `decord`, `Pillow` — ship with the base package), and set `PYTHONPATH=$REPO:$REPO/scripts` so `sil_wheel` and `embed_io` import.
 
 ```
 ingest_raw_embeddings.py    wheel-data embeddings -> one deduped <encoder>.npz

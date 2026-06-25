@@ -96,6 +96,12 @@ def get_extras_require():
             "faiss-cpu",
             "scikit-learn",
         ],
+        # Large-scale clustering, taxonomy, and figures for the embedding-space
+        # analysis. Same heavy deps as embedding-quality.
+        "embedding-clustering": [
+            "faiss-cpu",
+            "scikit-learn",
+        ],
         # Reference-based caption-quality metrics (nlg + bertscore). Kept
         # optional so the core package installs without the scoring stack.
         "caption-quality": [
