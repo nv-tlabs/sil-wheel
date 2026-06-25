@@ -16,8 +16,6 @@
 
 """Run supervised embedding-quality probes from public ``.npz`` embeddings."""
 
-from __future__ import annotations
-
 import argparse
 import csv
 import json
@@ -43,7 +41,7 @@ DEFAULT_EMBEDDINGS = [
 ]
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     pos_group = parser.add_mutually_exclusive_group(required=True)
     pos_group.add_argument(
@@ -126,7 +124,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def read_clip_ids(csv_path: Path) -> list[str]:
+def read_clip_ids(csv_path):
     """Return the clip_id column from a single-class label CSV."""
     with open(csv_path, newline="") as f:
         return [
@@ -136,10 +134,10 @@ def read_clip_ids(csv_path: Path) -> list[str]:
         ]
 
 
-def read_labels_csv(csv_path: Path) -> tuple[dict[str, list[str]], list[str]]:
+def read_labels_csv(csv_path):
     """Parse a multi-label CSV into clip_id -> labels and ordered labels."""
-    labels_for: dict[str, list[str]] = {}
-    label_order: list[str] = []
+    labels_for = {}
+    label_order = []
     with open(csv_path, newline="") as f:
         for row in csv.DictReader(f):
             clip_id = row.get("clip_id")
@@ -154,9 +152,9 @@ def read_labels_csv(csv_path: Path) -> tuple[dict[str, list[str]], list[str]]:
     return labels_for, label_order
 
 
-def label_indep_keys(cluster_ks: list[int]) -> set[str]:
+def label_indep_keys(cluster_ks):
     """Keys from cluster_metrics that do not depend on GT labels."""
-    keys: set[str] = set()
+    keys = set()
     for k in cluster_ks:
         keys.update({
             f"intra_sim_k{k}",
@@ -167,13 +165,7 @@ def label_indep_keys(cluster_ks: list[int]) -> set[str]:
     return keys
 
 
-def compute_one_vs_rest(
-    X: np.ndarray,
-    binary_labels: np.ndarray,
-    ks: list[int],
-    cluster_ks: list[int],
-    spherical: bool = True,
-) -> dict:
+def compute_one_vs_rest(X, binary_labels, ks, cluster_ks, spherical=True):
     """Run kNN consistency + cluster metrics for one binary label."""
     knn_m = knn_purity(X, binary_labels, k_values=ks)
     cluster_m = cluster_metrics(
@@ -188,19 +180,19 @@ def compute_one_vs_rest(
     return knn_m
 
 
-def macro_average(per_label: dict[str, dict]) -> dict[str, float]:
+def macro_average(per_label):
     """Unweighted mean of numeric per-label metrics, skipping NaNs."""
     if not per_label:
         return {}
     skip_keys = {"n_pos", "n_neg", "fewshot_skipped_ns", "fewshot_n_trials"}
-    all_keys: set[str] = set()
+    all_keys = set()
     for metrics in per_label.values():
         all_keys.update(metrics.keys())
     all_keys -= skip_keys
 
-    out: dict[str, float] = {}
+    out = {}
     for key in all_keys:
-        vals: list[float] = []
+        vals = []
         for metrics in per_label.values():
             value = metrics.get(key)
             if not isinstance(value, (int, float)):
@@ -214,13 +206,7 @@ def macro_average(per_label: dict[str, dict]) -> dict[str, float]:
     return out
 
 
-def _read_labels(args: argparse.Namespace) -> tuple[
-    bool,
-    dict[str, list[str]],
-    list[str],
-    list[str],
-    list[str],
-]:
+def _read_labels(args):
     multi_label = args.labels_csv is not None
     if multi_label:
         labels_for_pos, label_names = read_labels_csv(args.labels_csv)
@@ -265,17 +251,10 @@ def _read_labels(args: argparse.Namespace) -> tuple[
     return multi_label, labels_for_pos, label_names, pos_ids, neg_ids
 
 
-def _debug_subsample(
-    args: argparse.Namespace,
-    multi_label: bool,
-    labels_for_pos: dict[str, list[str]],
-    label_names: list[str],
-    pos_ids: list[str],
-    neg_ids: list[str],
-) -> tuple[dict[str, list[str]], list[str], list[str]]:
+def _debug_subsample(args, multi_label, labels_for_pos, label_names, pos_ids, neg_ids):
     rng = random.Random(args.debug_seed)
     if multi_label:
-        keep_pos: set[str] = set()
+        keep_pos = set()
         for label in label_names:
             label_clips = [
                 clip_id
@@ -299,7 +278,7 @@ def _debug_subsample(
     return labels_for_pos, pos_ids, neg_ids
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     args = parse_args(argv)
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -322,14 +301,14 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     wanted = set(pos_ids) | set(neg_ids)
-    label_for: dict[str, int] = {clip_id: 1 for clip_id in pos_ids}
+    label_for = {clip_id: 1 for clip_id in pos_ids}
     label_for.update({clip_id: 0 for clip_id in neg_ids})
     assert set(pos_ids).isdisjoint(neg_ids), (
         "pos/neg sets must be disjoint after overlap removal"
     )
     assert wanted.issubset(label_for), "every wanted clip must have a label"
 
-    loaded: dict[str, tuple[list[str], np.ndarray]] = {}
+    loaded = {}
     for name in args.embeddings:
         print(f"\n=== Loading {name} ===", flush=True)
         try:
@@ -354,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print("\n=== Per-embedding coverage ===", flush=True)
-    coverage: dict[str, dict] = {}
+    coverage = {}
     for name, (ids, _) in loaded.items():
         n_pos = sum(1 for clip_id in ids if label_for[clip_id] == 1)
         n_neg = sum(1 for clip_id in ids if label_for[clip_id] == 0)
@@ -392,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         f"don't match inter_pos ({inter_pos})"
     )
 
-    summary: dict = {
+    summary = {
         "mode": "multi_label" if multi_label else "single_class",
         "positive_csv": None if multi_label else str(args.positive_csv),
         "labels_csv": str(args.labels_csv) if multi_label else None,
@@ -426,8 +405,8 @@ def main(argv: list[str] | None = None) -> int:
         use_spherical = not args.no_spherical_kmeans and name != "trajectory"
         t0 = time.time()
         if multi_label:
-            per_label: dict[str, dict] = {}
-            label_indep: dict = {}
+            per_label = {}
+            label_indep = {}
             for label in label_names:
                 label_vec = np.array(
                     [
@@ -477,7 +456,7 @@ def main(argv: list[str] | None = None) -> int:
                     per_dep.update(fs)
                 per_label[label] = per_dep
 
-            metrics: dict = {
+            metrics = {
                 "embedding": name,
                 "n_dims": int(Xi.shape[1]),
                 "n_clips": int(Xi.shape[0]),

@@ -16,8 +16,6 @@
 
 """Render embedding-quality ``summary.json`` files as CSV and LaTeX tables."""
 
-from __future__ import annotations
-
 import argparse
 import csv
 import json
@@ -80,7 +78,7 @@ CAPTION = r"""  \caption{%
   \label{tab:embedding_quality_full}"""
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--summary",
@@ -112,7 +110,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _fmt(value: float | int | None) -> str:
+def _fmt(value):
     if not isinstance(value, (int, float)):
         return "---"
     if isinstance(value, float) and math.isnan(value):
@@ -120,7 +118,7 @@ def _fmt(value: float | int | None) -> str:
     return f"{float(value):.3f}"
 
 
-def _csv_value(value: float | int | None) -> float | int | str:
+def _csv_value(value):
     if not isinstance(value, (int, float)):
         return ""
     if isinstance(value, float) and math.isnan(value):
@@ -128,7 +126,7 @@ def _csv_value(value: float | int | None) -> float | int | str:
     return value
 
 
-def _latex_escape(text: str) -> str:
+def _latex_escape(text):
     return (
         text.replace("\\", r"\textbackslash{}")
         .replace("&", r"\&")
@@ -141,9 +139,9 @@ def _latex_escape(text: str) -> str:
     )
 
 
-def _ordered_embedding_items(summary: dict) -> list[tuple[str, dict]]:
+def _ordered_embedding_items(summary):
     metrics_by_embedding = summary["metrics_per_embedding"]
-    out: list[tuple[str, dict]] = []
+    out = []
     for key in PAPER_ORDER:
         if key in metrics_by_embedding:
             out.append((key, metrics_by_embedding[key]))
@@ -155,7 +153,7 @@ def _ordered_embedding_items(summary: dict) -> list[tuple[str, dict]]:
     return out
 
 
-def _metric_columns(purity_ks: list[int]) -> list[str]:
+def _metric_columns(purity_ks):
     return (
         ["nn_purity_k1", "nn_purity_k10"]
         + [f"cluster_purity_k{k}" for k in purity_ks]
@@ -165,14 +163,14 @@ def _metric_columns(purity_ks: list[int]) -> list[str]:
 
 
 def _row_from_metrics(
-    embedding_key: str,
-    label: str,
-    metrics: dict,
-    purity_ks: list[int],
+    embedding_key,
+    label,
+    metrics,
+    purity_ks,
     *,
-    n_pos: int | None = None,
-    commented: bool = False,
-) -> dict:
+    n_pos=None,
+    commented=False,
+):
     row = {
         "embedding_key": embedding_key,
         "embedding_display": EMBEDDING_DISPLAY[embedding_key],
@@ -192,12 +190,12 @@ def _row_from_metrics(
     return row
 
 
-def _paper_rows(summary: dict, purity_ks: list[int]) -> list[dict]:
+def _paper_rows(summary, purity_ks):
     """Build long-form rows for the paper table, including Avg rows."""
     labels_raw = summary.get("label_names") or []
     labels = [(raw, LABEL_MAP.get(raw, raw)) for raw in labels_raw]
     emb_items = _ordered_embedding_items(summary)
-    rows: list[dict] = []
+    rows = []
 
     for raw_label, display_label in labels:
         commented = display_label in COMMENT_LABELS
@@ -219,14 +217,14 @@ def _paper_rows(summary: dict, purity_ks: list[int]) -> list[dict]:
     return rows
 
 
-def _avg_rows(rows: list[dict], purity_ks: list[int]) -> list[dict]:
+def _avg_rows(rows, purity_ks):
     metric_cols = _metric_columns(purity_ks)
     present_keys = [
         key
         for key in PAPER_ORDER
         if any(row["embedding_key"] == key for row in rows)
     ]
-    values: dict[str, dict[str, list[float]]] = {
+    values = {
         key: {metric: [] for metric in metric_cols}
         for key in present_keys
     }
@@ -245,7 +243,7 @@ def _avg_rows(rows: list[dict], purity_ks: list[int]) -> list[dict]:
                 continue
             values[key][metric].append(value_f)
 
-    avg_rows: list[dict] = []
+    avg_rows = []
     for key in present_keys:
         avg_metrics = {}
         for metric in metric_cols:
@@ -264,7 +262,7 @@ def _avg_rows(rows: list[dict], purity_ks: list[int]) -> list[dict]:
     return avg_rows
 
 
-def _write_csv(rows: list[dict], path: Path, purity_ks: list[int]) -> None:
+def _write_csv(rows, path, purity_ks):
     fieldnames = [
         "embedding_key",
         "embedding_display",
@@ -285,8 +283,8 @@ def _write_csv(rows: list[dict], path: Path, purity_ks: list[int]) -> None:
             })
 
 
-def _col_max(rows: list[dict], metric_cols: list[str]) -> dict[str, float]:
-    out: dict[str, float] = {}
+def _col_max(rows, metric_cols):
+    out = {}
     for col in metric_cols:
         vals = [
             float(row[col])
@@ -299,7 +297,7 @@ def _col_max(rows: list[dict], metric_cols: list[str]) -> dict[str, float]:
     return out
 
 
-def _table_cell(row: dict, col: str, col_max: dict[str, float]) -> str:
+def _table_cell(row, col, col_max):
     value = row.get(col)
     cell = _fmt(value)
     if (
@@ -312,7 +310,7 @@ def _table_cell(row: dict, col: str, col_max: dict[str, float]) -> str:
     return cell
 
 
-def _paper_row(row: dict, purity_ks: list[int], col_max: dict[str, float]) -> str:
+def _paper_row(row, purity_ks, col_max):
     pur_cells = " ".join(
         f"& {_table_cell(row, f'cluster_purity_k{k}', col_max)}"
         for k in purity_ks
@@ -331,8 +329,8 @@ def _paper_row(row: dict, purity_ks: list[int], col_max: dict[str, float]) -> st
     )
 
 
-def _group_rows(rows: list[dict]) -> list[tuple[str, list[dict]]]:
-    groups: list[tuple[str, list[dict]]] = []
+def _group_rows(rows):
+    groups = []
     for row in rows:
         if groups and groups[-1][0] == row["label"]:
             groups[-1][1].append(row)
@@ -341,7 +339,7 @@ def _group_rows(rows: list[dict]) -> list[tuple[str, list[dict]]]:
     return groups
 
 
-def _render_paper_latex(rows: list[dict], purity_ks: list[int]) -> str:
+def _render_paper_latex(rows, purity_ks):
     n_pur = len(purity_ks)
     col_spec = "l l cc " + ("c" * n_pur) + " " + ("c" * n_pur) + " cc"
     knn_first = 3
@@ -355,7 +353,7 @@ def _render_paper_latex(rows: list[dict], purity_ks: list[int]) -> str:
     pur_header = " & ".join(f"$k\\!=\\!{k}$" for k in purity_ks)
 
     metric_cols = _metric_columns(purity_ks)
-    body: list[str] = []
+    body = []
     groups = _group_rows(rows)
     for group_i, (label, group) in enumerate(groups):
         maxima = _col_max(group, metric_cols)
@@ -401,7 +399,7 @@ def _render_paper_latex(rows: list[dict], purity_ks: list[int]) -> str:
     )
 
 
-def _flat_for_avg(metrics: dict) -> dict:
+def _flat_for_avg(metrics):
     if "per_label" not in metrics:
         return metrics
     out = {
@@ -414,10 +412,10 @@ def _flat_for_avg(metrics: dict) -> dict:
 
 
 def _single_class_rows(
-    summary: dict,
-    purity_ks: list[int],
-    intrinsic_k: int,
-) -> list[dict]:
+    summary,
+    purity_ks,
+    intrinsic_k,
+):
     rows = []
     for key, metrics in _ordered_embedding_items(summary):
         flat = _flat_for_avg(metrics)
@@ -440,7 +438,7 @@ def _single_class_rows(
     return rows
 
 
-def _render_single_class_latex(rows: list[dict], purity_ks: list[int]) -> str:
+def _render_single_class_latex(rows, purity_ks):
     n_pur = len(purity_ks)
     col_spec = "l c cc " + ("c" * n_pur) + " cc"
     pur_header = " & ".join(f"$k\\!=\\!{k}$" for k in purity_ks)
@@ -472,7 +470,7 @@ def _render_single_class_latex(rows: list[dict], purity_ks: list[int]) -> str:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     args = parse_args(argv)
     summary = json.loads(args.summary.read_text())
     purity_ks = args.purity_ks if args.purity_ks else [32, 64]

@@ -14,25 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Embedding-quality metrics for binary one-vs-rest label probes.
-
-The module keeps the math used for the SIL-Wheel paper's supervised
-embedding-quality table:
-
-* kNN consistency: for each clip, fraction of cosine nearest neighbours
-  that share the query clip's binary label.
-* Cluster purity and NMI: k-means cluster assignments compared against
-  one-vs-rest labels.
-* Few-shot binary kNN: sample n positive and n negative seeds, classify
-  held-out clips by their nearest seed, and average over trials.
-"""
-
-from __future__ import annotations
+"""Embedding-quality metrics for binary one-vs-rest label probes."""
+import sys
+from pathlib import Path
 
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import normalized_mutual_info_score
 from sklearn.neighbors import NearestNeighbors
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_shared"))
+from emb_common import l2_normalize  # noqa: E402
 
 try:
     import faiss
@@ -40,12 +32,7 @@ except ImportError:
     faiss = None
 
 
-def knn_purity(
-    X: np.ndarray,
-    labels: np.ndarray,
-    *,
-    k_values: list[int],
-) -> dict[str, float | int]:
+def knn_purity(X, labels, *, k_values):
     """Compute cosine kNN consistency against binary labels."""
     assert X.ndim == 2, f"X must be 2D, got shape {X.shape}"
     assert labels.ndim == 1, f"labels must be 1D, got shape {labels.shape}"
@@ -79,7 +66,7 @@ def knn_purity(
     pos_mask = labels == 1
     neg_mask = labels == 0
 
-    out: dict[str, float | int] = {
+    out = {
         "n_clips": int(n_clips),
         "n_pos": int(pos_mask.sum()),
         "n_neg": int(neg_mask.sum()),
@@ -102,13 +89,7 @@ def knn_purity(
     return out
 
 
-def _faiss_spherical_kmeans(
-    Xn: np.ndarray,
-    k: int,
-    seed: int,
-    niter: int = 25,
-    nredo: int = 10,
-) -> np.ndarray:
+def _faiss_spherical_kmeans(Xn, k, seed, niter=25, nredo=10):
     """Spherical k-means via faiss.Kmeans(spherical=True)."""
     if faiss is None:
         raise ImportError(
@@ -130,16 +111,7 @@ def _faiss_spherical_kmeans(
     return labels.squeeze(1)
 
 
-def _l2_normalize(X: np.ndarray) -> np.ndarray:
-    norms = np.linalg.norm(X, axis=1, keepdims=True)
-    return X / np.maximum(norms, 1e-12)
-
-
-def _purity(
-    cluster_labels: np.ndarray,
-    gt_labels: np.ndarray,
-    k: int,
-) -> tuple[float, int, int]:
+def _purity(cluster_labels, gt_labels, k):
     """Per-cluster majority-vote purity vs. binary labels."""
     n_clips = cluster_labels.shape[0]
     majority_total = 0
@@ -160,9 +132,9 @@ def _purity(
     return majority_total / n_clips, n_pos_clusters, n_empty
 
 
-def _intra_sim(Xn: np.ndarray, cluster_labels: np.ndarray, k: int) -> float:
+def _intra_sim(Xn, cluster_labels, k):
     """Mean per-cluster pairwise cosine across non-singleton clusters."""
-    sims: list[float] = []
+    sims = []
     for cid in range(k):
         mask = cluster_labels == cid
         n_c = int(mask.sum())
@@ -176,9 +148,9 @@ def _intra_sim(Xn: np.ndarray, cluster_labels: np.ndarray, k: int) -> float:
     return float(sum(sims) / len(sims))
 
 
-def _inter_sim(Xn: np.ndarray, cluster_labels: np.ndarray, k: int) -> float:
+def _inter_sim(Xn, cluster_labels, k):
     """Mean cosine between L2-normalized centroids of non-empty clusters."""
-    centroids: list[np.ndarray] = []
+    centroids = []
     for cid in range(k):
         mask = cluster_labels == cid
         if not mask.any():
@@ -194,14 +166,7 @@ def _inter_sim(Xn: np.ndarray, cluster_labels: np.ndarray, k: int) -> float:
     return float((g.sum() - n_valid) / (n_valid * (n_valid - 1)))
 
 
-def cluster_metrics(
-    X: np.ndarray,
-    labels: np.ndarray,
-    *,
-    k_values: list[int],
-    seed: int = 0,
-    spherical: bool = True,
-) -> dict[str, float | int]:
+def cluster_metrics(X, labels, *, k_values, seed=0, spherical=True):
     """Compute k-means purity, NMI, and intrinsic cluster geometry."""
     assert X.ndim == 2, f"X must be 2D, got shape {X.shape}"
     assert labels.ndim == 1, f"labels must be 1D, got shape {labels.shape}"
@@ -214,9 +179,9 @@ def cluster_metrics(
     )
 
     n_clips = X.shape[0]
-    Xn = _l2_normalize(X)
+    Xn = l2_normalize(X)
 
-    out: dict[str, float | int] = {
+    out = {
         "n_clips": int(n_clips),
         "n_pos": int((labels == 1).sum()),
         "n_neg": int((labels == 0).sum()),
@@ -252,14 +217,7 @@ def cluster_metrics(
     return out
 
 
-def few_shot_binary_knn(
-    X: np.ndarray,
-    binary_labels: np.ndarray,
-    *,
-    n_values: list[int],
-    S: int,
-    seed: int,
-) -> dict:
+def few_shot_binary_knn(X, binary_labels, *, n_values, S, seed):
     """Evaluate a seed-subsampled binary nearest-neighbour classifier."""
     assert X.ndim == 2, f"X must be 2D, got shape {X.shape}"
     assert binary_labels.ndim == 1, (
@@ -279,7 +237,7 @@ def few_shot_binary_knn(
     pos_idx = np.flatnonzero(binary_labels == 1)
     neg_idx = np.flatnonzero(binary_labels == 0)
 
-    out: dict = {
+    out = {
         "fewshot_n_trials": int(S),
         "fewshot_skipped_ns": [],
     }
@@ -292,9 +250,9 @@ def few_shot_binary_knn(
             out[f"fewshot_neg_recall_n{n}"] = float("nan")
             continue
 
-        accs: list[float] = []
-        pos_recs: list[float] = []
-        neg_recs: list[float] = []
+        accs = []
+        pos_recs = []
+        neg_recs = []
         for s in range(S):
             rng = np.random.default_rng(seed * 10_000 + s)
             pos_seeds = rng.choice(pos_idx, size=n, replace=False)
