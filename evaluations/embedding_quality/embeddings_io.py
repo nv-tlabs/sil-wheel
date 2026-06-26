@@ -14,17 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Public embedding input helpers.
+"""Public embedding input helpers. Each encoder is one ``<name>.npz`` with
+row-aligned ``clip_ids`` + ``embeddings``."""
 
-Each encoder is one ``<name>.npz`` with row-aligned ``clip_ids`` + ``embeddings``.
-"""
-
-import sys
 import time
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_shared"))
-from emb_common import filter_to_ids, load_npz  # noqa: E402
+import numpy as np
 
 
 def load_embeddings(embeddings_dir, name, wanted):
@@ -34,19 +29,23 @@ def load_embeddings(embeddings_dir, name, wanted):
         raise FileNotFoundError(npz_path)
 
     t0 = time.time()
-    all_ids, all_embeddings = load_npz(npz_path)
+    data = np.load(npz_path, allow_pickle=True)
+    all_ids = [str(x) for x in data["clip_ids"]]
+    all_emb = np.ascontiguousarray(data["embeddings"], dtype=np.float32)
+    assert all_emb.ndim == 2, f"{npz_path}: embeddings must be 2D, got {all_emb.shape}"
+    assert len(all_ids) == all_emb.shape[0], f"{npz_path}: clip_id/row count mismatch"
     assert len(set(all_ids)) == len(all_ids), f"{npz_path}: duplicate clip_ids"
-    ids, X = filter_to_ids(all_ids, all_embeddings, wanted)
-    elapsed = time.time() - t0
-    if not ids:
-        print(
-            f"[embeddings] {name}: 0 / {len(wanted)} clips matched ({elapsed:.1f}s)",
-            flush=True,
-        )
-    else:
-        print(
-            f"[embeddings] {name}: {len(ids)} / {len(wanted)} clips matched, "
-            f"{X.shape} in {elapsed:.1f}s",
-            flush=True,
-        )
+
+    rows = [i for i, clip_id in enumerate(all_ids) if clip_id in wanted]
+    ids = [all_ids[i] for i in rows]
+    X = (
+        np.ascontiguousarray(all_emb[np.asarray(rows, dtype=np.int64)])
+        if rows
+        else np.zeros((0, all_emb.shape[1]), dtype=np.float32)
+    )
+    print(
+        f"[embeddings] {name}: {len(ids)} / {len(wanted)} clips matched, "
+        f"{X.shape} in {time.time() - t0:.1f}s",
+        flush=True,
+    )
     return ids, X
