@@ -18,23 +18,25 @@ We provide various scripts to prepare the videos and metadata for the server:
     - [Videos on S3](#videos-on-s3)
     - [Videos on the Hugging Face Hub](#videos-on-the-hugging-face-hub)
     - [Add Data to S3 and DB Updates](#add-data-to-s3-and-db-updates)
-- [Grant User Access to a New Dataset](#grant-user-access-to-a-new-dataset)
-- [Process Ego-trajectories](#process-ego-trajectories)
+  - [Grant User Access to a New Dataset](#grant-user-access-to-a-new-dataset)
+  - [Process Ego-trajectories](#process-ego-trajectories)
     - [Updating the full-trajectory index](#updating-the-full-trajectory-index)
     - [Updating the sub-trajectory indexes (5 s and 10 s)](#updating-the-sub-trajectory-indexes-5-s-and-10-s)
     - [Building an index from scratch (rare)](#building-an-index-from-scratch-rare)
-- [Extract Text-to-Video Embeddings](#extract-text-to-video-embeddings)
+  - [Extract Text-to-Video Embeddings](#extract-text-to-video-embeddings)
     - [Update Text-to-Video FAISS Index](#update-text-to-video-faiss-index)
-- [Extract Captions](#extract-captions)
+  - [Extract Captions](#extract-captions)
     - [Extract Structured Captions via API Calls](#extract-structured-captions-via-api-calls)
     - [Add Captions to DB](#add-captions-to-db)
-- [Extract Caption Embeddings](#extract-caption-embeddings)
+  - [Extract Caption Embeddings](#extract-caption-embeddings)
     - [Update Caption Embedding Index](#update-caption-embedding-index)
-- [Extract Visual (Florence2 SigCLIP) Embeddings](#extract-visual-florence2-sigclip-embeddings)
+  - [Extract Visual (Florence2 SigCLIP) Embeddings](#extract-visual-florence2-sigclip-embeddings)
     - [Update Visual FAISS Index](#update-visual-faiss-index)
-- [Statistics Artifacts](#statistics-artifacts)
+  - [Statistics Artifacts](#statistics-artifacts)
     - [Trajectory Statistics](#trajectory-statistics)
     - [Dataset Statistics](#dataset-statistics)
+  - [Preparing Additional Datasets](#preparing-additional-datasets)
+    - [OpenDV-YouTube](#opendv-youtube)
 
 ## Supported Sources and Formats
 
@@ -919,3 +921,15 @@ Outputs
 
 Performance
 - Prints per-dataset elapsed time and total runtime.
+## Preparing Additional Datasets
+
+The pipeline above operates on any video collection once it is on local disk. Some datasets
+need their own acquisition or pre-processing first; those steps are documented per dataset
+below. Add new datasets as their own subsection here.
+
+### OpenDV-YouTube
+
+[OpenDV-YouTube](https://github.com/OpenDriveLab/DriveAGI/tree/main/opendv) is OpenDriveLab's
+large-scale driving-video dataset (*GenAD*, CVPR 2024) — a list of public YouTube videos with a
+metadata sheet. The full OpenDV pipeline — extract 20 s clips, generate reference captions, and
+run the retrieval benchmark — is documented end to end in [`opendv.md`](opendv.md).
