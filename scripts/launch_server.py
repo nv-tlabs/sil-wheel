@@ -1105,6 +1105,9 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
             )
 
         if parsed_path.path == "/agent_url":
+            user = self._require_user()
+            if user is None:
+                return
             return self._send_json({"agent_url": self.agent_url})
 
         if parsed_path.path == "/admin_data":
