@@ -43,25 +43,30 @@ Two modes:
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
+
+import numpy as np
 
 from sil_wheel.cluster_build import build_clustering_run, generate_run_id
 from sil_wheel.cluster_hierarchy import build_hierarchical_clustering
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_shared"))
-from emb_common import filter_to_ids, load_npz, mean_center  # noqa: E402
-
 
 def _load(npz, pool, center, label):
     """Load clip_ids + embeddings, optionally restrict to a pool and mean-center."""
-    clip_ids, emb = load_npz(npz)
+    d = np.load(npz, allow_pickle=True)
+    clip_ids = [str(x) for x in d["clip_ids"]]
+    emb = np.ascontiguousarray(d["embeddings"], dtype=np.float32)
     if pool is not None:
-        keep = json.loads(Path(pool).read_text())
-        clip_ids, emb = filter_to_ids(clip_ids, emb, keep)
+        keep = {str(x) for x in json.loads(Path(pool).read_text())}
+        idx = np.array([i for i, c in enumerate(clip_ids) if c in keep], dtype=np.int64)
+        emb = np.ascontiguousarray(emb[idx])
+        clip_ids = [clip_ids[i] for i in idx.tolist()]
     if center:
-        emb = mean_center(emb)
+        emb = emb - emb.mean(axis=0, keepdims=True)
+        nrm = np.linalg.norm(emb, axis=1, keepdims=True)
+        nrm[nrm == 0] = 1.0
+        emb = np.ascontiguousarray(emb / nrm, dtype=np.float32)
         print(f"[{label}] mean-centered + renormalized (anisotropy fix)", flush=True)
     return emb, clip_ids
 

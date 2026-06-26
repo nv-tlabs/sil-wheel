@@ -15,21 +15,20 @@
 # limitations under the License.
 
 """Embedding-quality metrics for binary one-vs-rest label probes."""
-import sys
-from pathlib import Path
-
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import normalized_mutual_info_score
 from sklearn.neighbors import NearestNeighbors
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_shared"))
-from emb_common import l2_normalize  # noqa: E402
-
 try:
     import faiss
 except ImportError:
     faiss = None
+
+
+def _l2_normalize(X):
+    norms = np.linalg.norm(X, axis=1, keepdims=True)
+    return X / np.maximum(norms, 1e-12)
 
 
 def knn_purity(X, labels, *, k_values):
@@ -179,7 +178,7 @@ def cluster_metrics(X, labels, *, k_values, seed=0, spherical=True):
     )
 
     n_clips = X.shape[0]
-    Xn = l2_normalize(X)
+    Xn = _l2_normalize(X)
 
     out = {
         "n_clips": int(n_clips),

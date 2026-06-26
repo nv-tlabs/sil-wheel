@@ -110,7 +110,7 @@ Reports ARI/NMI (agreement), compression, timing, and intrinsic Δ/silhouette; o
 
 ## Shared code
 
-`figlib.py` backs every figure generator: the topic lexicon (`categorize`, `topic_profiles`, `distinctive_terms`) and cluster selection (`distinct_clusters`, `dense_xy`). `use_nvidia_style()` registers NVIDIA Sans from `NVIDIA_SANS_DIR`, falling back to DejaVu when absent. `_shared/emb_common.py` holds the npz loader shared with embedding-quality.
+`figlib.py` backs every figure generator: the topic lexicon (`categorize`, `topic_profiles`, `distinctive_terms`) and cluster selection (`distinct_clusters`, `dense_xy`). `use_nvidia_style()` registers NVIDIA Sans from `NVIDIA_SANS_DIR`, falling back to DejaVu when absent.
 
 ## Tests
 
