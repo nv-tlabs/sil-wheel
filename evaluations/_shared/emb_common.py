@@ -13,26 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Embedding helpers shared by the embedding-clustering and embedding-quality
-evaluations. Both represent each encoder as one ``<name>.npz`` with row-aligned
-``clip_ids`` + ``embeddings``; the readers and the geometry primitives below are
-the parts they have in common.
-
-These dirs run as standalone scripts (no package), so a consumer puts this dir
-on the path before importing, e.g.::
-
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "_shared"))
-    from emb_common import load_npz
-"""
+"""npz loader + geometry helpers shared by the embedding-clustering and
+embedding-quality evals (each encoder = one ``<name>.npz`` of ``clip_ids`` +
+``embeddings``). Consumers add this dir to ``sys.path``, then import."""
 
 import numpy as np
 
 
 def load_npz(path):
-    """Return ``(clip_ids, embeddings)`` from an npz: a list of string clip ids
-    row-aligned with a 2D float32 array."""
+    """Return ``(clip_ids, embeddings)`` from an npz: str ids + 2D float32 array."""
     data = np.load(path, allow_pickle=True)
     clip_ids = [str(x) for x in data["clip_ids"]]
     X = np.ascontiguousarray(data["embeddings"], dtype=np.float32)
@@ -61,9 +50,7 @@ def l2_normalize(X, eps=1e-12):
 
 
 def mean_center(X):
-    """Subtract the dataset mean and renormalize. Restores a usable cosine gap
-    for anisotropic encoders (e.g. Florence-2/SigLIP) whose vectors share a
-    dominant direction."""
+    """Mean-center then row-renormalize (anisotropy fix, e.g. Florence-2/SigLIP)."""
     Xc = X - X.mean(axis=0, keepdims=True)
     norms = np.linalg.norm(Xc, axis=1, keepdims=True)
     norms[norms == 0] = 1.0

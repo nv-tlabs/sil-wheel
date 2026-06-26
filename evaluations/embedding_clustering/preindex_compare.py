@@ -126,6 +126,7 @@ def _pq_bytes_per_vec(index_spec):
 
 
 def _centroid_gap(X, labels, centroids, sample, seed):
+    # point-to-centroid gap (paper's tab::preindex_compare; not metrics.py's pairwise form)
     rng = np.random.default_rng(seed)
     idx = rng.choice(len(X), min(sample, len(X)), replace=False)
     Xs = X[idx]

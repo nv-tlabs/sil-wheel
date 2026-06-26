@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Create a tiny synthetic embedding-quality dataset for smoke tests."""
+"""Tiny synthetic embedding-quality dataset for smoke tests (separate fixture from embedding_clustering/prep.py synthetic)."""
 
 import argparse
 import csv

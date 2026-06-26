@@ -191,11 +191,10 @@ DROP = {
     "nighttime",
 }
 
+# Defaults to a repo-relative ``fonts/`` dir (override with NVIDIA_SANS_DIR);
+# falls back to DejaVu Sans when the dir is absent.
 NVIDIA_SANS_DIR = Path(
-    os.environ.get(
-        "NVIDIA_SANS_DIR",
-        "/home/april/sil-wheel-experiments/SIL_Wheel_Whitepaper/NVIDIA-Sans-Font-TTF",
-    )
+    os.environ.get("NVIDIA_SANS_DIR", str(Path(__file__).resolve().parent / "fonts"))
 )
 FONT_FAMILY = "DejaVu Sans"
 
