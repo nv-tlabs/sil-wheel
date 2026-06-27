@@ -84,28 +84,29 @@ def _quantize_reconstruct(X, index_spec, seed):
 
 
 def _cluster(X, k, seed):
-    """Spherical (cosine) k-means via faiss, matching wheel's FaissKMeans
-    (spherical=True, max_points_per_centroid=256).
+    """Spherical k-means on L2-normalized inputs (niter=25, nredo=10).
 
     Returns ``(labels, centroids, train_secs, assign_secs)``.
     """
     d = X.shape[1]
+    Xn = np.ascontiguousarray(
+        X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12), dtype=np.float32
+    )
     km = faiss.Kmeans(
         d,
         k,
         niter=25,
-        nredo=1,
+        nredo=10,
         spherical=True,
         seed=seed,
         gpu=False,
-        max_points_per_centroid=256,
         verbose=False,
     )
     t0 = time.perf_counter()
-    km.train(np.ascontiguousarray(X, dtype=np.float32))
+    km.train(Xn)
     train_secs = time.perf_counter() - t0
     t1 = time.perf_counter()
-    _, labels = km.index.search(np.ascontiguousarray(X, dtype=np.float32), 1)
+    _, labels = km.index.search(Xn, 1)
     assign_secs = time.perf_counter() - t1
     return (
         labels.ravel().astype(np.int64),
@@ -277,7 +278,9 @@ def main(argv=None):
     lab_pq, cen_pq, train_p, assign_p = _cluster(X_pq, args.k, args.seed)
 
     ari = float(adjusted_rand_score(lab_exact, lab_pq))
-    nmi = float(normalized_mutual_info_score(lab_exact, lab_pq))
+    nmi = float(
+        normalized_mutual_info_score(lab_exact, lab_pq, average_method="arithmetic")
+    )
 
     # --- footprint / compression: the dominant "much faster at scale" lever ---
     # We always reconstruct to float32 before k-means, so RAM during clustering
