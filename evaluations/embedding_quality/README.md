@@ -25,7 +25,7 @@ Labels are not shipped with the dataset: the public run writes no manual annotat
 
 ## Inputs
 
-Each encoder is one `.npz` file:
+Most encoders are one `.npz` file per encoder:
 
 ```bash
 embeddings/
@@ -33,7 +33,6 @@ embeddings/
   qwen3_vl_8b.npz
   pe_core_g14.npz
   caption.npz
-  florence2_sigclip.npz
   trajectory.npz
   random.npz
 ```
@@ -48,6 +47,26 @@ embeddings    # shape (N, D), numeric
 Labels are CSVs. Multi-label mode uses `clip_id,label` rows. Negatives use a
 single `clip_id` column. The runner scores every encoder on the intersection
 of clips found in all loaded embeddings.
+
+### Region encoders (Florence-2 / SigCLIP detections)
+
+Two encoders are aggregated on the fly from the *per-detection* Florence-2 /
+SigCLIP archive (one `__full_frame__` row per clip plus one SigLIP2 embedding
+per grounded-detection crop), not from a per-clip `.npz`:
+
+- `florence2_sigclip_grounding_balanced_bof` — **Region BoF**, a TF-IDF
+  bag-of-features histogram over a visual vocabulary fit on the detections
+  (a per-clip vector).
+- `florence2_sigclip_grounding_balanced_chamfer_kmedoids` — **Region Chamfer**,
+  which treats each clip as the *set* of its detections and clusters natively
+  on the symmetric set-to-set Chamfer similarity (K-medoids); no per-clip
+  vector is ever formed.
+
+Both read the archive given by `--region-archive` (a glob over the
+grounded-balanced `.pkl` shards produced by
+`scripts/extract_florence2_sigclip_embeddings.py` with grounding-phrase
+detection + label-balanced selection). They are scored on the same clip
+intersection as every other encoder, so all rows are directly comparable.
 
 ## Environment
 
@@ -68,7 +87,11 @@ python evaluations/embedding_quality/run_embedding_quality.py \
   --labels-csv labels.csv \
   --negative-csv negatives.csv \
   --embeddings-dir embeddings \
-  --embeddings cosmos qwen3_vl_8b pe_core_g14 caption florence2_sigclip trajectory random \
+  --embeddings cosmos qwen3_vl_8b pe_core_g14 caption \
+    florence2_sigclip_grounding_balanced_bof \
+    florence2_sigclip_grounding_balanced_chamfer_kmedoids \
+    trajectory random \
+  --region-archive "/path/to/visual_embeddings_grounding_balanced_benchmark/**/*.pkl" \
   --ks 1 10 \
   --cluster-ks 32 64 \
   --few-shot-n 5 20 \
@@ -91,9 +114,9 @@ python evaluations/embedding_quality/build_table.py \
   --output-stem results/embedding_quality/table
 ```
 
-This writes `table.csv` and `table_paper.tex`. The paper table keeps the seven
+This writes `table.csv` and `table_paper.tex`. The paper table keeps the eight
 public rows in this order: Cosmos-Embed1, Qwen3-VL-8B, PE-Core-G14, Caption
-embedding, Region embeddings, Trajectory shape, Random Gaussian.
+embedding, Region BoF, Region Chamfer, Trajectory shape, Random Gaussian.
 
 ## Smoke test
 

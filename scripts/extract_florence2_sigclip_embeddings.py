@@ -82,19 +82,94 @@ def crop_image(img: Image.Image, box_xyxy):
     return img.crop(tuple(box_xyxy))
 
 
+def region_confidence_sort_key(region: dict):
+    return (
+        -float(region.get("confidence", 0.0)),
+        int(region.get("frame_order", 0)),
+        int(region.get("generation_rank", 0)),
+        str(region.get("label", "")),
+        tuple(region.get("bbox_xyxy", [])),
+    )
+
+
+def region_output_sort_key(region: dict):
+    return (
+        int(region.get("frame_order", 0)),
+        int(region.get("generation_rank", 0)),
+        str(region.get("label", "")),
+        tuple(region.get("bbox_xyxy", [])),
+    )
+
+
+def select_balanced_regions(
+    candidates: list[dict],
+    max_detections_per_label: int,
+    max_detections_per_clip: int,
+) -> list[dict]:
+    if max_detections_per_label <= 0 or max_detections_per_clip <= 0:
+        return []
+
+    regions_by_label: dict[str, list[dict]] = {}
+    for region in candidates:
+        regions_by_label.setdefault(str(region["label"]), []).append(region)
+
+    label_counts = {
+        label: len(regions)
+        for label, regions in regions_by_label.items()
+    }
+    capped_by_label = {
+        label: sorted(regions, key=region_confidence_sort_key)[
+            :max_detections_per_label
+        ]
+        for label, regions in regions_by_label.items()
+    }
+
+    label_order = sorted(
+        capped_by_label,
+        key=lambda label: (
+            label_counts[label],
+            region_confidence_sort_key(capped_by_label[label][0]),
+            label,
+        ),
+    )
+
+    selected = []
+    for rank in range(max_detections_per_label):
+        for label in label_order:
+            regions = capped_by_label[label]
+            if rank >= len(regions):
+                continue
+            selected.append(regions[rank])
+            if len(selected) >= max_detections_per_clip:
+                return sorted(selected, key=region_output_sort_key)
+
+    return sorted(selected, key=region_output_sort_key)
+
+
 class Florence2RegionProposer:
     def __init__(
         self,
         model_name: str,
         device: torch.device,
         task_prompt: str = "<OD>",
+        grounding_phrase: str | None = None,
         max_regions_per_frame: int = 8,
         min_region_size: int = 32,
     ):
         self.device = device
         self.task_prompt = task_prompt
+        self.grounding_phrase = grounding_phrase
         self.max_regions_per_frame = max_regions_per_frame
         self.min_region_size = min_region_size
+
+        if (
+            self.task_prompt == "<CAPTION_TO_PHRASE_GROUNDING>"
+            and not self.grounding_phrase
+        ):
+            raise ValueError(
+                "grounding_phrase is required for "
+                "<CAPTION_TO_PHRASE_GROUNDING>"
+            )
 
         self.processor = AutoProcessor.from_pretrained(
             model_name,
@@ -113,8 +188,11 @@ class Florence2RegionProposer:
 
     @torch.no_grad()
     def detect(self, img: Image.Image) -> list[dict]:
+        prompt = self.task_prompt
+        if self.grounding_phrase is not None:
+            prompt += self.grounding_phrase
         inputs = self.processor(
-            text=self.task_prompt,
+            text=prompt,
             images=img,
             return_tensors="pt",
         ).to(self.device)
@@ -235,16 +313,24 @@ def build_views_for_clip(
     frame_indices: np.ndarray,
     proposer: Florence2RegionProposer | None,
     include_full_frame: bool = True,
+    max_detections_per_label: int = 4,
+    max_detections_per_clip: int = 100,
 ) -> tuple[list[Image.Image], list[dict]]:
     views = []
     metadata = []
+    region_candidates = []
+    frames_by_index = {}
 
-    for img, absolute_frame_idx in zip(frames, frame_indices):
+    for frame_order, (img, absolute_frame_idx) in enumerate(
+        zip(frames, frame_indices)
+    ):
+        frame_index = int(absolute_frame_idx)
+        frames_by_index[frame_index] = img
         if include_full_frame:
             views.append(img)
             metadata.append(
                 {
-                    "frame_index": int(absolute_frame_idx),
+                    "frame_index": frame_index,
                     "bbox_xyxy": [0, 0, img.width, img.height],
                     "label": "__full_frame__",
                 }
@@ -254,16 +340,33 @@ def build_views_for_clip(
             continue
 
         regions = proposer.detect(img)
-        for region in regions:
-            crop = crop_image(img, region["bbox_xyxy"])
-            views.append(crop)
-            metadata.append(
+        for generation_rank, region in enumerate(regions):
+            region_candidates.append(
                 {
-                    "frame_index": int(absolute_frame_idx),
-                    "bbox_xyxy": region["bbox_xyxy"],
-                    "label": region["label"],
+                    **region,
+                    "frame_index": frame_index,
+                    "frame_order": frame_order,
+                    "generation_rank": generation_rank,
                 }
             )
+
+    selected_regions = select_balanced_regions(
+        region_candidates,
+        max_detections_per_label=max_detections_per_label,
+        max_detections_per_clip=max_detections_per_clip,
+    )
+    for region in selected_regions:
+        img = frames_by_index[region["frame_index"]]
+        crop = crop_image(img, region["bbox_xyxy"])
+        views.append(crop)
+        metadata.append(
+            {
+                "frame_index": region["frame_index"],
+                "bbox_xyxy": region["bbox_xyxy"],
+                "label": region["label"],
+                "confidence": region["confidence"],
+            }
+        )
 
     return views, metadata
 
@@ -327,13 +430,23 @@ def main():
         default="<OD>",
         help='Florence-2 task prompt. For generic object detection, use "<OD>".',
     )
+    parser.add_argument(
+        "--grounding_phrase",
+        default=None,
+        help=(
+            "Phrase text appended to the Florence task prompt. Required for "
+            "<CAPTION_TO_PHRASE_GROUNDING>."
+        ),
+    )
 
-    parser.add_argument("--max_regions_per_frame", type=int, default=8)
+    parser.add_argument("--max_regions_per_frame", type=int, default=16)
     parser.add_argument("--min_region_size", type=int, default=32)
+    parser.add_argument("--max_detections_per_label", type=int, default=4)
+    parser.add_argument("--max_detections_per_clip", type=int, default=100)
 
     parser.add_argument(
         "--siglip_model",
-        default="google/siglip-base-patch16-224",
+        default="google/siglip2-base-patch16-224",
         choices=[
             "google/siglip-base-patch16-224",
             "google/siglip2-base-patch16-224",
@@ -375,6 +488,20 @@ def main():
         parser.error("path_to_data is required unless --hf-repo-id is set")
     if args.hf_repo_id is not None and args.bucket is not None:
         parser.error("--hf-repo-id and --bucket are mutually exclusive")
+    if args.max_regions_per_frame <= 0:
+        parser.error("--max_regions_per_frame must be positive")
+    if args.max_detections_per_label <= 0:
+        parser.error("--max_detections_per_label must be positive")
+    if args.max_detections_per_clip <= 0:
+        parser.error("--max_detections_per_clip must be positive")
+    if (
+        args.florence_task == "<CAPTION_TO_PHRASE_GROUNDING>"
+        and not args.grounding_phrase
+    ):
+        parser.error(
+            "--grounding_phrase is required when --florence_task is "
+            "<CAPTION_TO_PHRASE_GROUNDING>"
+        )
 
     output_path = args.output.format(
         process_id=args.process_id,
@@ -427,6 +554,7 @@ def main():
         model_name=args.florence_model,
         device=device,
         task_prompt=args.florence_task,
+        grounding_phrase=args.grounding_phrase,
         max_regions_per_frame=args.max_regions_per_frame,
         min_region_size=args.min_region_size,
     )
@@ -465,6 +593,8 @@ def main():
                 frame_indices=frame_indices,
                 proposer=proposer,
                 include_full_frame=not args.no_full_frame,
+                max_detections_per_label=args.max_detections_per_label,
+                max_detections_per_clip=args.max_detections_per_clip,
             )
             if len(views) == 0:
                 continue
