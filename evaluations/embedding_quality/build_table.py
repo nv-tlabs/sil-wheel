@@ -28,7 +28,10 @@ EMBEDDING_DISPLAY = {
     "qwen3_vl_8b": "Qwen3-VL-8B (4096-d)",
     "pe_core_g14": "PE-Core-G14 (1280-d)",
     "caption": "Captions: Qwen3-Embed-8B / Qwen3.5-27B-VL (4096-d)",
-    "florence2_sigclip": "Florence-2 / SigCLIP (768-d)",
+    "florence2_sigclip_grounding_balanced_bof": "Region BoF (grounded, 128-d)",
+    "florence2_sigclip_grounding_balanced_chamfer_kmedoids": (
+        "Region Chamfer (grounded, set)"
+    ),
     "trajectory": "Trajectory shape (1210-d)",
     "random": "Random Gaussian (768-d)",
 }
@@ -38,7 +41,8 @@ PAPER_DISPLAY = {
     "qwen3_vl_8b": "Qwen3-VL-8B",
     "pe_core_g14": "PE-Core-G14",
     "caption": "Caption embedding",
-    "florence2_sigclip": "Region embeddings",
+    "florence2_sigclip_grounding_balanced_bof": "Region BoF",
+    "florence2_sigclip_grounding_balanced_chamfer_kmedoids": "Region Chamfer",
     "trajectory": "Trajectory shape",
     "random": "Random Gaussian",
 }
@@ -48,7 +52,8 @@ PAPER_ORDER = [
     "qwen3_vl_8b",
     "pe_core_g14",
     "caption",
-    "florence2_sigclip",
+    "florence2_sigclip_grounding_balanced_bof",
+    "florence2_sigclip_grounding_balanced_chamfer_kmedoids",
     "trajectory",
     "random",
 ]
@@ -65,8 +70,11 @@ CAPTION = r"""  \caption{%
     Six labels cover scene-level,
     object, ego-trajectory, and long-tail scenarios.
     \emph{Caption embedding} = Qwen3-Embedding-8B on \wheelname captions;
-    \emph{Region embeddings} = SigLIP2 on
-    Florence2-detected crops.
+    \emph{Region} rows aggregate SigLIP2 embeddings of Florence2
+    grounded-detection crops --- \emph{Region BoF} is a TF-IDF
+    bag-of-features histogram over a visual vocabulary, and
+    \emph{Region Chamfer} treats each clip as the set of its detections
+    and clusters on the symmetric set-to-set Chamfer similarity (K-medoids).
     No single embedding dominates.
     Visual models (Cosmos-Embed1, Qwen3-VL-8B, PE-Core-G14) are
     strong on scene-level (Barrier Gate, Fog).

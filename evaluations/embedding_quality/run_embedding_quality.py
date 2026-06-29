@@ -28,14 +28,29 @@ import numpy as np
 
 from embeddings_io import load_embeddings
 from metrics import cluster_metrics, few_shot_binary_knn, knn_purity
+from region_aggregation import (
+    DEFAULT_REGION_ARCHIVE,
+    build_bof,
+    chamfer_metrics,
+    region_clip_ids,
+    scan_region_sets,
+)
 
+
+# Region encoders are aggregated from the per-detection Florence/SigCLIP
+# archive instead of a per-clip <name>.npz. BoF is a per-clip vector and rides
+# the normal vector metrics path; Chamfer is set-native and has its own branch.
+REGION_BOF_KEY = "florence2_sigclip_grounding_balanced_bof"
+REGION_CHAMFER_KEY = "florence2_sigclip_grounding_balanced_chamfer_kmedoids"
+REGION_KEYS = {REGION_BOF_KEY, REGION_CHAMFER_KEY}
 
 DEFAULT_EMBEDDINGS = [
     "cosmos",
     "qwen3_vl_8b",
     "pe_core_g14",
     "caption",
-    "florence2_sigclip",
+    REGION_BOF_KEY,
+    REGION_CHAMFER_KEY,
     "trajectory",
     "random",
 ]
@@ -105,6 +120,18 @@ def parse_args(argv=None):
         type=int,
         default=0,
         help="Base RNG seed for few-shot evaluation.",
+    )
+    parser.add_argument(
+        "--region-archive",
+        default=DEFAULT_REGION_ARCHIVE,
+        help="Glob for the grounded-balanced Florence/SigCLIP detection pkl "
+        "shards, scanned by the Region BoF and Region Chamfer encoders.",
+    )
+    parser.add_argument(
+        "--region-bof-vocab",
+        type=int,
+        default=128,
+        help="Visual vocabulary size for the Region BoF histogram.",
     )
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument(
@@ -308,9 +335,41 @@ def main(argv=None):
     )
     assert wanted.issubset(label_for), "every wanted clip must have a label"
 
+    # Region encoders share one scan of the per-detection archive.
+    region_scan = None
+    if any(name in REGION_KEYS for name in args.embeddings):
+        try:
+            region_scan = scan_region_sets(args.region_archive, wanted)
+        except FileNotFoundError as exc:
+            print(
+                f"[run] region archive missing ({exc}); skipping region "
+                "encoders",
+                flush=True,
+            )
+
     loaded = {}
     for name in args.embeddings:
         print(f"\n=== Loading {name} ===", flush=True)
+        if name in REGION_KEYS:
+            if region_scan is None:
+                print(f"[run] {name}: no region archive; skipping", flush=True)
+                continue
+            detections, full_frames = region_scan
+            if name == REGION_BOF_KEY:
+                ids, X = build_bof(
+                    detections, full_frames, wanted,
+                    n_vocab=args.region_bof_vocab,
+                )
+            else:  # REGION_CHAMFER_KEY: set-native, no per-clip vector
+                ids, X = region_clip_ids(detections, full_frames, wanted), None
+            if not ids:
+                print(f"[run] {name}: 0 clips matched; skipping", flush=True)
+                continue
+            assert set(ids).issubset(wanted), (
+                f"{name}: region scan returned clip_ids outside wanted"
+            )
+            loaded[name] = (ids, X)
+            continue
         try:
             ids, X = load_embeddings(args.embeddings_dir, name, wanted)
         except FileNotFoundError as exc:
@@ -395,6 +454,36 @@ def main(argv=None):
 
     for name, (ids, X) in loaded.items():
         print(f"\n=== metrics: {name} ===", flush=True)
+
+        if name == REGION_CHAMFER_KEY:
+            t0 = time.time()
+            detections, full_frames = region_scan
+            metrics = chamfer_metrics(
+                detections,
+                full_frames,
+                inter_order,
+                multi_label=multi_label,
+                labels_for_pos=labels_for_pos,
+                label_names=label_names,
+                inter_labels=inter_labels,
+                ks=args.ks,
+                cluster_ks=args.cluster_ks,
+                few_shot_n=list(args.few_shot_n),
+                few_shot_trials=args.few_shot_trials,
+                few_shot_seed=args.few_shot_seed,
+            )
+            if multi_label:
+                metrics["macro_avg"] = macro_average(metrics["per_label"])
+            metrics["embedding"] = name
+            metrics["runtime_s"] = round(time.time() - t0, 2)
+            emb_dir = args.output_dir / name
+            emb_dir.mkdir(parents=True, exist_ok=True)
+            (emb_dir / "numbers.json").write_text(json.dumps(metrics, indent=2))
+            scalar = {k: v for k, v in metrics.items() if isinstance(v, (int, float))}
+            print(json.dumps(scalar, indent=2), flush=True)
+            summary["metrics_per_embedding"][name] = metrics
+            continue
+
         id_to_row = {clip_id: i for i, clip_id in enumerate(ids)}
         Xi = X[[id_to_row[clip_id] for clip_id in inter_order]]
         assert Xi.shape[0] == len(inter_order), (
