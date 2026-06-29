@@ -17,25 +17,30 @@ Install with `pip install -e ".[embedding-clustering]"` (adds `faiss-cpu` + `sci
 ingest_raw_embeddings.py    wheel-data embeddings -> one deduped <encoder>.npz
 prep.py pool                clip-ids covered by all three embeddings
 cluster_raw.py              cluster each embedding (flat; --hierarchical for a taxonomy)
-make_figures.py themes      name each cluster with an LLM (keywords -> one phrase)
+**make_figures**.py themes      name each cluster with an LLM (keywords -> one phrase)
 make_figures.py <fig>       figures and tables (see Outputs)
 preindex_compare.py         exact vs PQ clustering: agreement + compression
 ```
 
 Two passes feed the figures: a **k=50 exact** pass per embedding (overlay maps, tables, drill-down) and a **k=1000** pass (`run_full_cluster.sh`) for the at-scale overview and the pre/after-index check.
 
-### 1. Ingest and find the shared pool
+### 1. Build embeddings from the Physical AI dataset, then ingest
 
-Produce a Physical AI wheel-data dir with the getting-started example (downloads from HuggingFace, runs the extract steps), then ingest the embeddings:
+Everything downstream reads one `.npz` per encoder. Produce them from the public [Physical AI Autonomous Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) dataset with the getting-started example, then ingest. Prerequisites: a CUDA GPU (the extract steps run Cosmos-Embed1, Qwen captioning, caption embeddings, and Florence-2/SigLIP2), `ffmpeg`/`ffprobe` on PATH, and `huggingface-cli login` (the dataset is gated).
 
 ```bash
-python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py \
+# Download a few chunks (~96 clips each) and run every extractor into a wheel-data workdir.
+python "$REPO"/examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py \
     --workdir ./wheel-data-physical-ai --chunks 0-3
+# Fold the per-encoder shards into one deduped npz each + the shared-clip pool.
 python ingest_raw_embeddings.py --root ./wheel-data-physical-ai --out ./npz \
     --encoders cosmos caption visual --pool-name pai
+export CAPTIONS_DB=./wheel-data-physical-ai/captions.db
 ```
 
-Ingest also writes `pai_clip_ids.json` (clips covered by all encoders) for `cluster_raw.py --pool`. Set `CAPTIONS_DB=./wheel-data-physical-ai/captions.db` for the topic steps. Internal research dumps use `--layout internal`; the after-index passes (`prep.py pool` + `run_full_cluster.sh`) read a served FAISS index and are internal-only.
+The loader writes `cosmos_embeddings/`, `caption_embeddings/`, `visual_embeddings/` shards plus `captions.db` under the workdir. Ingest turns those into `npz/cosmos.npz`, `npz/caption.npz`, `npz/visual.npz` (each holds `clip_ids` + `embeddings`), `npz/pai_clip_ids.json` (clips covered by every encoder, for `cluster_raw.py --pool`), and `npz/pool_summary.json`. The same npz files feed `evaluations/embedding_quality`.
+
+The public example uses smaller query-time models than the paper (Qwen3-Embedding-0.6B captions, SigLIP2-base, Qwen3-VL-4B captions), so embedding dimensions and absolute numbers differ from the reported runs while the workflow is identical. Internal research dumps use `--layout internal` (adds the `qwen3_vl` and `pe_core` encoders); the after-index passes (`prep.py pool` + `run_full_cluster.sh`) read a served FAISS index and are internal-only.
 
 ### 2. Cluster each embedding (k=50, exact)
 
