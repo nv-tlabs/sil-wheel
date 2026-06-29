@@ -25,26 +25,27 @@ def _write_jsonl(path, records):
     path.write_bytes(lines + b"\n")
 
 
-def test_opendv_strips_doubled_clip_id_prefix(tmp_path):
-    # The GT id repeats the video id before the time range; the embedding
-    # files keep only the part after the first "__".
+def test_opendv_uses_clip_id_directly(tmp_path):
+    # The GT stores the clip-path basename "<vid>_<seg>" matching the
+    # embeddings, so the clip_id is used as-is -- including ids whose YouTube
+    # video id itself contains "__" (which a naive split would mangle).
     p = tmp_path / "gt.jsonl"
     p.write_bytes(
-        orjson.dumps({"clip_id": "vidA__vidA_10-20", "long": "l1"}) + b"\n"
+        orjson.dumps({"clip_id": "vidA_10-20", "long": "l1"}) + b"\n"
         + b"\n"  # blank lines are skipped
-        + orjson.dumps({"clip_id": "v-x__v-x_30-40", "long": "l2"}) + b"\n"
+        + orjson.dumps({"clip_id": "e6BAP___NYQ_30-40", "long": "l2"}) + b"\n"
     )
     split = load_opendv_split(
         SimpleNamespace(gt_path=p, caption_length="long")
     )
-    assert split.video_ids == ["vidA_10-20", "v-x_30-40"]
+    assert split.video_ids == ["vidA_10-20", "e6BAP___NYQ_30-40"]
     assert split.sentences == ["l1", "l2"]
 
 
 def test_opendv_selects_caption_length(tmp_path):
     p = tmp_path / "gt.jsonl"
     _write_jsonl(p, [
-        {"clip_id": "v__v_0-1", "short": "S", "medium": "M", "long": "L"},
+        {"clip_id": "v_0-1", "short": "S", "medium": "M", "long": "L"},
     ])
     for length, expected in [("short", "S"), ("medium", "M"), ("long", "L")]:
         split = load_opendv_split(

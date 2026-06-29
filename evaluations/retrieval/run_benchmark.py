@@ -95,12 +95,12 @@ def load_pvdbench_split(args):
 def load_opendv_split(args):
     """OpenDV: captions JSONL with short/medium/long variants per clip.
 
-    The ground-truth ``clip_id`` repeats the video id as a ``<video>__``
-    prefix that the embeddings drop, so strip it to align the two id spaces.
+    The ground-truth ``clip_id`` is the clip-path basename ``<vid>_<seg>`` that
+    matches the embeddings, so it is used directly.
     """
     rows = read_jsonl(args.gt_path)
     return Split(
-        video_ids=[r["clip_id"].split("__", 1)[-1] for r in rows],
+        video_ids=[r["clip_id"] for r in rows],
         sentences=[r[args.caption_length] for r in rows],
     )
 

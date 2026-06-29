@@ -39,10 +39,9 @@ flag.
 Recall@K treats the identity permutation as ground truth, so
 `video_ids` must be unique and each id must match a `clip_id` present
 in every embeddings file. If your raw ground-truth ids differ from the
-embedding ids, normalise them inside the loader. For example, `opendv`
-ground truth uses `vid__vid_2460-2480` but the embeddings use
-`vid_2460-2480`, so `load_opendv_split` strips the prefix at the first
-`__`.
+embedding ids, normalise the ground truth so its `clip_id` matches them.
+For example, `opendv` ground truth and the embeddings both key on the clip
+basename `vid_2460-2480`, so `load_opendv_split` uses `clip_id` directly.
 
 ## Modalities
 
