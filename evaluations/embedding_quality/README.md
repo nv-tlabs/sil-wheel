@@ -7,6 +7,22 @@ Supervised label probes for the embeddings SIL-Wheel serves. The workflow
 measures whether local neighbourhoods and k-means clusters are consistent with
 human labels, then renders the paper's per-label embedding-quality table.
 
+## Producing the embeddings from the Physical AI dataset
+
+The encoders come from the public [Physical AI Autonomous Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) dataset. The getting-started example downloads a slice and runs every extractor; `ingest_raw_embeddings.py` (in `evaluations/embedding_clustering`) folds the per-encoder shards into the `<encoder>.npz` files this workflow reads. Needs a CUDA GPU, `ffmpeg` on PATH, and `huggingface-cli login` (the dataset is gated).
+
+```bash
+python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py \
+    --workdir ./wheel-data-physical-ai --chunks 0-3
+python evaluations/embedding_clustering/ingest_raw_embeddings.py \
+    --root ./wheel-data-physical-ai --out ./embeddings \
+    --encoders cosmos caption visual --pool-name pai
+```
+
+This writes `embeddings/{cosmos,caption,visual}.npz`, each with the `clip_ids` + `embeddings` arrays described below, so they drop straight into the runner with `--embeddings-dir ./embeddings --embeddings cosmos caption visual`. The remaining paper rows (`qwen3_vl_8b`, `pe_core_g14`, `trajectory`, `random`) come from internal dumps and are not part of the public slice.
+
+Labels are not shipped with the dataset: the public run writes no manual annotations, so supply `labels.csv` (`clip_id,label`) and `negatives.csv` (`clip_id`) yourself, or use the synthetic smoke test below to exercise the workflow end-to-end. The public example also uses smaller query-time models than the paper (Qwen3-Embedding-0.6B captions, SigLIP2-base), so dimensions and absolute numbers differ from the reported table.
+
 ## Inputs
 
 Each encoder is one `.npz` file:
