@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ast
+import functools
 import json
 import os
 import pickle
@@ -36,20 +38,95 @@ TRAJECTORY_EXPRESSIONS = {
     "stop_go": (
         "any(speed < 0.5) and "
         "any(speed > 3.0) and "
-        "min(np.where(speed > 3.0)[0]) > min(np.where(speed < 0.5)[0])"
+        "min(where(speed > 3.0)[0]) > min(where(speed < 0.5)[0])"
     ),
     "hard_braking": "sum(acceleration < -3.0) > 10",
     "prolonged_stop": "sum(speed < 0.5) > 150",
     "idle_to_cruise": (
         "any(speed < 0.5) and "
         "any(speed > 10.0) and "
-        "min(np.where(speed > 10.0)[0]) > min(np.where(speed < 0.5)[0])"
+        "min(where(speed > 10.0)[0]) > min(where(speed < 0.5)[0])"
     ),
     "high_speed_swerve": (
         "sum(curvature > 0.2) > 10 and sum(speed_kph > 50) > 10"
     ),
     "moving_ego": "sum(speed_kph > 5) > 10",
 }
+
+
+# Expression elements a trajectory predicate may use. Mirrors
+# classifier_search.ALLOWED_NODES, plus whitelisted calls and subscripting
+# (e.g. ``where(...)[0]``) that the predefined patterns rely on.
+_TRAJ_ALLOWED_NODES = (
+    ast.Expression, ast.Compare, ast.BoolOp, ast.BinOp, ast.UnaryOp,
+    ast.And, ast.Or, ast.Not, ast.Invert, ast.USub, ast.UAdd,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
+    ast.BitAnd, ast.BitOr, ast.BitXor,
+    ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Eq, ast.NotEq,
+    ast.Call, ast.Subscript, ast.Name, ast.Load, ast.Constant,
+)
+# numpy reductions / elementwise math exposed by bare name. No file or
+# memory functions (load, save, memmap, ctypeslib, ...) and no attribute
+# access, so an expression cannot reach arbitrary code.
+_TRAJ_FUNCS = {
+    "mean": np.mean, "min": np.min, "max": np.max, "sum": np.sum,
+    "all": np.all, "any": np.any, "abs": np.abs, "std": np.std,
+    "var": np.var, "median": np.median, "diff": np.diff, "where": np.where,
+    "clip": np.clip, "sqrt": np.sqrt, "argmin": np.argmin, "argmax": np.argmax,
+    "percentile": np.percentile, "count_nonzero": np.count_nonzero,
+    "logical_and": np.logical_and, "logical_or": np.logical_or,
+    "gradient": np.gradient, "maximum": np.maximum, "minimum": np.minimum,
+    "ptp": np.ptp, "sign": np.sign, "round": np.round, "len": len,
+}
+_TRAJ_VARS = ("speed", "acceleration", "jerk", "curvature", "speed_kph")
+_TRAJ_NAMES = set(_TRAJ_VARS) | set(_TRAJ_FUNCS)
+
+
+@functools.lru_cache(maxsize=128)
+def _compile_trajectory_predicate(expression):
+    """Compile a trajectory filter string into a predicate
+    ``f(speed, acceleration, jerk, curvature) -> bool``.
+
+    The expression comes from user input (``filters.search_speed``), so it
+    is parsed and checked against a strict allowlist of node types, names,
+    and functions before it runs: no attribute access, no calls outside
+    ``_TRAJ_FUNCS``, and an empty ``__builtins__``, so no arbitrary code can
+    execute. Compiled predicates are memoised per expression.
+    """
+    tree = ast.parse(expression.strip(), mode="eval")
+    for node in ast.walk(tree):
+        if not isinstance(node, _TRAJ_ALLOWED_NODES):
+            raise ValueError(
+                f"disallowed element in trajectory expression: "
+                f"{type(node).__name__}"
+            )
+        if isinstance(node, ast.Call) and not isinstance(node.func, ast.Name):
+            raise ValueError(
+                "only direct calls to whitelisted functions are allowed"
+            )
+        if isinstance(node, ast.Name) and node.id not in _TRAJ_NAMES:
+            raise ValueError(
+                f"disallowed name in trajectory expression: {node.id!r}"
+            )
+        if isinstance(node, ast.Constant) and not isinstance(
+            node.value, (int, float)
+        ):
+            raise ValueError("only numeric literals are allowed")
+    code = compile(tree, "<trajectory_expression>", "eval")
+
+    def predicate(speed, acceleration, jerk, curvature):
+        scope = {
+            **_TRAJ_FUNCS,
+            "speed": speed,
+            "acceleration": acceleration,
+            "jerk": jerk,
+            "curvature": curvature,
+            "speed_kph": speed * 3.6,
+        }
+        return eval(code, {"__builtins__": {}}, scope)
+
+    return predicate
+
 
 # Windows used by subtrajectory functions (in seconds)
 WINDOWS = {
@@ -635,25 +712,8 @@ class TrajectoryStore:
             if search_query in self.searches:
                 return self.searches[search_query] & ids_set
 
-            # Compile the predicate
-            _globals = {
-                "__builtins__": {},
-                "np": np,
-                "mean": np.mean,
-                "min": np.min,
-                "max": np.max,
-                "sum": np.sum,
-                "all": np.all,
-                "any": np.any,
-                "len": len,
-            }
             search_query = search_query.replace("\n", " ")
-            fn = ""
-            fn += "def predicate(speed, acceleration, jerk, curvature):\n"
-            fn += "    speed_kph = speed * 3.6\n"
-            fn += "    return "
-            fn += search_query
-            exec(fn, _globals)
+            predicate = _compile_trajectory_predicate(search_query)
 
             # Linear search in the stats
             video_ids_universe = set()
@@ -662,9 +722,7 @@ class TrajectoryStore:
                 acceleration = stats[:, 4]
                 jerk = stats[:, 5]
                 curvature = stats[:, 6]
-                if not _globals["predicate"](
-                    speed, acceleration, jerk, curvature
-                ):
+                if not predicate(speed, acceleration, jerk, curvature):
                     continue
                 video_ids_universe.add(clip_id)
             self.searches[search_query] = video_ids_universe

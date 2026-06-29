@@ -293,11 +293,11 @@ limitations under the License.
                             <div class="filter-label-row">
                                 <label for="speed-search-term">Search Trajectory:
                                 <button class="help-icon" onclick="showSpeedSearchHelp()">i</button>
-                                </label><input type="text" id="speed-search-term" placeholder="e.g. any(curvature>0.3)"/>
+                                </label><input type="text" id="speed-search-term" placeholder="e.g. any(curvature>0.3)" oninput="onTrajectorySpeedInput()"/>
                             </div>
                             <div class="filter-label-row">
                                 <label for="trajectory-pattern">Trajectory Pattern:</label>
-                                <select id="trajectory-pattern" >
+                                <select id="trajectory-pattern" onchange="onTrajectoryPatternChange()">
                                     <option value="">-- Select pattern --</option>
                                     <option value="moving_ego">Moving Ego Vehicle</option>
                                     <option value="high_curvature">High Curvature</option>
@@ -827,13 +827,13 @@ limitations under the License.
         In addition you also have the following <b>functions/objects</b>:
         </p>
         <ol>
-            <li><b>np</b>: The top level numpy module</li>
             <li><b>mean</b>: Maps to <em>np.mean</em></li>
             <li><b>sum</b>: Maps to <em>np.sum</em></li>
             <li><b>min</b>: Maps to <em>np.min</em></li>
             <li><b>max</b>: Maps to <em>np.max</em></li>
             <li><b>all</b>: Maps to <em>np.all</em></li>
             <li><b>any</b>: Maps to <em>np.any</em></li>
+            <li><b>logical_and</b>, <b>logical_or</b>: Maps to <em>np.logical_and</em> / <em>np.logical_or</em></li>
             <li><b>len</b>: Maps to <em>len</em></li>
         </ol>
         <h4>Example searches: </h4>
@@ -841,7 +841,7 @@ limitations under the License.
             <li><b>mean(speed_kph) > 10</b>: The average speed of the vehicle is more than 10 km/h</li>
             <li><b>any(speed == 0) and any(speed > 10)</b>: The vehicle is both stopped and moving in the video</li>
             <li><b>sum(curvature > 0.1) > 10</b>: The video has more than 10 frames with curvature larger than 0.1</li>
-            <li><b>sum(np.logical_and(speed_kph > 20, curvature > 0.1)) > 10</b>: The video has more than 10 frames where the speed is <em>simultaneously</em> more than 20 km/h and the curvature larger than 0.1</li>
+            <li><b>sum(logical_and(speed_kph > 20, curvature > 0.1)) > 10</b>: The video has more than 10 frames where the speed is <em>simultaneously</em> more than 20 km/h and the curvature larger than 0.1</li>
              <li><b>sum(speed < 0.5) > 150</b>: Prolonged Stop</li>
         </ol>
         <span class="clear-annotation-button" onclick="hideSpeedSearchHelp()">&times;</span>

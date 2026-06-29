@@ -2612,6 +2612,23 @@ function showContextualFilters() {
 }
 
 
+// The Trajectory Pattern presets and the custom Search Trajectory expression
+// are alternatives — the most recently used one runs. Selecting a preset
+// clears a typed expression; typing an expression clears the selected preset.
+function onTrajectoryPatternChange() {
+    if (document.getElementById("trajectory-pattern").value) {
+        document.getElementById("speed-search-term").value = "";
+    }
+}
+
+
+function onTrajectorySpeedInput() {
+    if (document.getElementById("speed-search-term").value) {
+        document.getElementById("trajectory-pattern").selectedIndex = 0;
+    }
+}
+
+
 function clearSearch() {
     resetTrajectorySearch(true);
     document.getElementById("trajectory-pattern").selectedIndex = 0;

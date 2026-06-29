@@ -27,7 +27,11 @@ import numpy as np
 import pytest
 
 from sil_wheel.stores.time_utils import Timer
-from sil_wheel.stores.trajectory_store import TRAJECTORY_EXPRESSIONS, TrajectoryStore
+from sil_wheel.stores.trajectory_store import (
+    TRAJECTORY_EXPRESSIONS,
+    TrajectoryStore,
+    _compile_trajectory_predicate,
+)
 from sil_wheel.stores.utils import LRUDict
 
 # -------------------------------------------------------------------------
@@ -528,3 +532,53 @@ class TestHasTrajectories:
     def test_unknown_clip_returns_false(self, traj_store):
         """A clip absent from clip_to_idx is not recognised."""
         assert traj_store.has_trajectories("clip-does-not-exist") is False
+
+
+# -------------------------------------------------------------------------
+# Expression safety
+# -------------------------------------------------------------------------
+
+
+class TestExpressionSafety:
+    @pytest.mark.parametrize("expr", [
+        "__import__('os')",
+        "open('/etc/passwd')",
+        "np.load('/etc/passwd')",
+        "speed.tofile('/tmp/x')",
+        "speed.__class__",
+        "mean.__globals__",
+        "().__class__",
+        "lambda: 1",
+        "[x for x in speed]",
+        "'a string'",
+    ])
+    def test_unsafe_expressions_rejected(self, expr):
+        with pytest.raises(ValueError):
+            _compile_trajectory_predicate(expr)
+
+    @pytest.mark.parametrize("name", list(TRAJECTORY_EXPRESSIONS))
+    def test_predefined_patterns_compile(self, name):
+        """Every shipped pattern must still parse under the allowlist."""
+        _compile_trajectory_predicate(TRAJECTORY_EXPRESSIONS[name])
+
+    def test_whitelisted_functions_evaluate(self):
+        speed = np.concatenate([np.zeros(50), np.full(50, 10.0)])
+        z = np.zeros(100, dtype=np.float32)
+        # where + subscript, logical_and (UI example), gradient, mean
+        for expr in [
+            "mean(speed) > 1",
+            "sum(logical_and(speed > 5, speed < 20)) > 10",
+            "min(where(speed > 5)[0]) > 10",
+            "max(abs(gradient(speed))) > 0",
+        ]:
+            assert _compile_trajectory_predicate(expr)(speed, z, z, z)
+
+    def test_unsafe_expression_rejected_through_search(self):
+        store = _make_store({})
+        with pytest.raises(ValueError):
+            store._inner_search_trajectory("speed.__class__", set())
+
+    def test_compiled_predicate_is_cached(self):
+        a = _compile_trajectory_predicate("mean(speed) > 5")
+        b = _compile_trajectory_predicate("mean(speed) > 5")
+        assert a is b
