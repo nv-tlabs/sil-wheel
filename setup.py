@@ -92,6 +92,20 @@ def get_install_requirements():
 
 def get_extras_require():
     return {
+        # Interactive wheel server (scripts/launch_server.py) over a prebuilt
+        # wheel-data dir. install_requires already carries the query encoders
+        # and HTTP stack; FAISS is the only missing piece. The Docker base
+        # installs faiss-gpu instead (see docker/).
+        "server": [
+            "faiss-cpu",
+        ],
+        # Offline extraction / ingest (examples/.../setup_physical_ai.py +
+        # scripts/extract_*.py): adds the captioning model runtime and FAISS
+        # index builder on top of install_requires. GPU required.
+        "pipeline": [
+            "faiss-cpu",
+            "vllm",
+        ],
         # Reference-based caption-quality metrics (nlg + bertscore). Kept
         # optional so the core package installs without the scoring stack.
         "caption-quality": [
