@@ -22,7 +22,7 @@ from pathlib import Path
 import faiss
 import numpy as np
 
-from embed_io import load_clip_to_index
+from embed_io import load_clip_to_index, load_clip_to_rows, pool_clip_features
 from sil_wheel.cluster_build import (
     FaissKMeans,
     fit_and_write_umap,
@@ -60,6 +60,19 @@ def get_features_and_predict(features_index, ids_to_fetch, kmeans_model, batch_s
 
     print(f"Time for reconstruct + assign ({n_total} clips): {time.perf_counter() - t0:.3f}s")
     return np.concatenate(all_labels), np.concatenate(all_distances)
+
+
+def build_kmeans(args, n_clusters, feature_dim):
+    return FaissKMeans(
+        feature_dim=feature_dim,
+        n_clusters=n_clusters,
+        niter=args.n_iter,
+        nredo=args.n_redo,
+        verbose=bool(args.verbose),
+        seed=args.seed,
+        spherical_kmeans=bool(args.spherical_kmeans),
+        max_points_per_centroid=args.max_points_per_centroid,
+    )
 
 
 def spec_to_tag(spec):
@@ -134,6 +147,16 @@ def main(argv=None):
         help="Pre-computed tag string for the FAISS index filename (e.g. ivf4096_pq96x8).",
     )
     parser.add_argument(
+        "--aggregate",
+        choices=["first", "mean"],
+        default="first",
+        help="How to reduce a multi-row clip to one vector before clustering. "
+             "'first' keeps the first row per clip (default; e.g. first frame for "
+             "the region encoder). 'mean' mean-pools all rows of the clip, which "
+             "for region embeddings clusters on the whole detection set rather "
+             "than a single frame.",
+    )
+    parser.add_argument(
         "--captions_db",
         default=None,
         help=(
@@ -177,20 +200,13 @@ def main(argv=None):
         str(path_to_faiss_index),
         faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY,
     )
-    clip_to_index = load_clip_to_index(
-        args.path_to_embeddings, args.embed_type, tag,
-    )
-    print(f"[{tag}] Loaded {args.embed_type} index from {path_to_faiss_index}")
-    print("ntotal:", features_index.ntotal)
-    print("FAISS OMP threads:", faiss.omp_get_max_threads())
-    features_index.make_direct_map()
-
-    if args.path_to_clip_ids is None:
-        clip_ids = random.sample(list(clip_to_index.keys()), 5000000)
-    else:
+    # Resolve the pool of clip_ids first; for mean pooling we pass it as `wanted`
+    # so load_clip_to_rows only gathers those clips' rows (a full visual index
+    # has ~1e9 rows).
+    clip_ids = None
+    if args.path_to_clip_ids is not None:
         with open(args.path_to_clip_ids, "r") as f:
             clip_ids = json.load(f)
-
         if isinstance(clip_ids, list):
             clip_ids = [str(x) for x in clip_ids]
         elif isinstance(clip_ids, dict) and "clip_ids" in clip_ids:
@@ -200,95 +216,85 @@ def main(argv=None):
                 f"Unsupported clip_ids JSON format in {args.path_to_clip_ids}"
             )
 
-    kept_row_ids = []
-    kept_clip_ids = []
-    for c in clip_ids:
-        if c not in clip_to_index:
-            continue
-        kept_row_ids.append(int(clip_to_index[c]))
-        kept_clip_ids.append(c)
-    del clip_ids, clip_to_index
+    if args.aggregate == "mean":
+        clip_map = load_clip_to_rows(
+            args.path_to_embeddings, args.embed_type, tag, wanted=clip_ids,
+        )
+    else:
+        clip_map = load_clip_to_index(args.path_to_embeddings, args.embed_type, tag)
+    print(f"[{tag}] Loaded {args.embed_type} index from {path_to_faiss_index} "
+          f"(aggregate={args.aggregate})")
+    print("ntotal:", features_index.ntotal)
+    print("FAISS OMP threads:", faiss.omp_get_max_threads())
+    features_index.make_direct_map()
 
-    ids_to_fetch = np.asarray(kept_row_ids, dtype="int64")
-    del kept_row_ids
-    n_total = len(ids_to_fetch)
+    if clip_ids is None:
+        clip_ids = random.sample(list(clip_map.keys()), 5000000)
 
-    if n_total > 5_000_000:
-        rng = np.random.default_rng(args.seed)
+    kept_clip_ids = [c for c in clip_ids if c in clip_map]
+    del clip_ids
+    rng = np.random.default_rng(args.seed)
 
-        # Subsample IDs for assignment up-front — before any reconstruction —
-        # so that n_total is bounded and the training sample is drawn from a
-        # representative but much smaller pool of IDs (not vectors).
-        MAX_ASSIGN = 5_000_000
-        if n_total > MAX_ASSIGN:
-            subset_idx = rng.choice(n_total, MAX_ASSIGN, replace=False)
-            ids_to_fetch = ids_to_fetch[subset_idx]
-            kept_clip_ids = [kept_clip_ids[i] for i in subset_idx.tolist()]
-            n_total = MAX_ASSIGN
-            print(f"Subsampled to {MAX_ASSIGN:,} clips for assignment.")
+    # Bound the assignment set up-front so n_total stays manageable.
+    MAX_ASSIGN = 5_000_000
+    large = len(kept_clip_ids) > MAX_ASSIGN
+    if large:
+        sel = rng.choice(len(kept_clip_ids), MAX_ASSIGN, replace=False)
+        kept_clip_ids = [kept_clip_ids[i] for i in sel.tolist()]
+        print(f"Subsampled to {MAX_ASSIGN:,} clips for assignment.")
+    n_total = len(kept_clip_ids)
 
-        # Reconstruct only the training cap — avoids allocating the full
-        # n_total matrix before subsampling (e.g. 56 GB for 15 M clips).
+    # Materialize one vector per clip. 'mean' pools every row of the clip;
+    # 'first' keeps one row. The big first-frame case streams by row id
+    # (npfeatures stays None) to avoid holding the whole matrix in memory.
+    npfeatures = None
+    ids_to_fetch = None
+    if args.aggregate == "mean":
+        print(f"Mean-pooling all rows for {n_total:,} clips...")
+        t0 = time.perf_counter()
+        npfeatures = pool_clip_features(features_index, clip_map, kept_clip_ids)
+        del clip_map
+        print(f"Pooled features: {npfeatures.shape} ({time.perf_counter() - t0:.3f}s)")
+    else:
+        ids_to_fetch = np.asarray(
+            [int(clip_map[c]) for c in kept_clip_ids], dtype="int64"
+        )
+        del clip_map
+        if not large:
+            print(f"Reconstructing {n_total} vectors in batch...")
+            t0 = time.perf_counter()
+            npfeatures = features_index.reconstruct_batch(ids_to_fetch)
+            print(f"Reconstructed features: {npfeatures.shape} "
+                  f"({time.perf_counter() - t0:.3f}s)")
+
+    if npfeatures is not None:
+        # In-memory path (mean pooling, or first-frame at <= MAX_ASSIGN clips):
+        # fit directly (FaissKMeans subsamples internally via
+        # max_points_per_centroid) and assign every clip.
+        kmeans = build_kmeans(args, n_clusters, npfeatures.shape[1])
+        kmeans.fit(npfeatures)
+        cluster_assignments, distances = kmeans.predict(npfeatures)
+    else:
+        # Large first-frame path: reconstruct only a training cap by row id,
+        # then assign in streaming batches.
         n_train = min(n_clusters * args.max_points_per_centroid, n_total)
         train_ids = ids_to_fetch[rng.choice(n_total, n_train, replace=False)]
-
         BATCH = 2_000_000
-        print(
-            f"Reconstructing {n_train:,} training vectors "
-            f"(sampled from {n_total:,})..."
-        )
-        t0_reconstruct = time.perf_counter()
-        train_features = np.empty(
-            (n_train, features_index.d), dtype=np.float32
-        )
+        print(f"Reconstructing {n_train:,} training vectors (sampled from {n_total:,})...")
+        t0 = time.perf_counter()
+        train_features = np.empty((n_train, features_index.d), dtype=np.float32)
         for i in range(0, n_train, BATCH):
-            batch = features_index.reconstruct_batch(
-                train_ids[i : i + BATCH]
-            )
-            train_features[i : i + len(batch)] = batch
+            batch = features_index.reconstruct_batch(train_ids[i:i + BATCH])
+            train_features[i:i + len(batch)] = batch
         del train_ids
-        print(
-            f"Reconstructed training features: {train_features.shape} "
-            f"({time.perf_counter() - t0_reconstruct:.3f}s)"
-        )
-
-        kmeans = FaissKMeans(
-            feature_dim=train_features.shape[1],
-            n_clusters=n_clusters,
-            niter=args.n_iter,
-            nredo=args.n_redo,
-            verbose=bool(args.verbose),
-            seed=args.seed,
-            spherical_kmeans=bool(args.spherical_kmeans),
-            max_points_per_centroid=args.max_points_per_centroid,
-        )
+        print(f"Reconstructed training features: {train_features.shape} "
+              f"({time.perf_counter() - t0:.3f}s)")
+        kmeans = build_kmeans(args, n_clusters, train_features.shape[1])
         kmeans.fit(train_features)
         del train_features
-
         cluster_assignments, distances = get_features_and_predict(
             features_index, ids_to_fetch, kmeans
         )
-        npfeatures = None
-    else:
-        print(f"Reconstructing {n_total} vectors in batch...")
-        t0_reconstruct = time.perf_counter()
-        npfeatures = features_index.reconstruct_batch(ids_to_fetch)
-        print(
-            f"Reconstructed features: {npfeatures.shape} "
-            f"({time.perf_counter() - t0_reconstruct:.3f}s)"
-        )
-        kmeans = FaissKMeans(
-            feature_dim=npfeatures.shape[1],
-            n_clusters=n_clusters,
-            niter=args.n_iter,
-            nredo=args.n_redo,
-            verbose=bool(args.verbose),
-            seed=args.seed,
-            spherical_kmeans=bool(args.spherical_kmeans),
-            max_points_per_centroid=args.max_points_per_centroid,
-        )
-        kmeans.fit(npfeatures)
-        cluster_assignments, distances = kmeans.predict(npfeatures)
 
     write_cluster_assignments(
         path_to_output, cluster_assignments, distances, kept_clip_ids, n_clusters,

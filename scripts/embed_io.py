@@ -67,3 +67,80 @@ def load_clip_to_index(path_to_embeddings, embed_type, index_tag):
     raise FileNotFoundError(
         f"No clip mapping found for {embed_type}/{index_tag} under {root}"
     )
+
+
+def load_clip_to_rows(path_to_embeddings, embed_type, index_tag, wanted=None,
+                      chunk=50_000_000):
+    """Return {clip_id: [faiss_row, ...]} with *all* rows for each clip.
+
+    Multi-row encoders (e.g. region embeddings: one row per detection crop)
+    keep several rows per clip. ``load_clip_to_index`` collapses these to the
+    first row; this returns the full set so a clip can be pooled over all of
+    its rows. Requires the compact .npy sidecars
+    (``<embed_type>_clip_ids_<tag>.npy`` + ``<embed_type>_position_of_row_<tag>.npy``).
+
+    ``wanted`` restricts the result to that set of clip_ids and is strongly
+    recommended: a full visual index can have ~1e9 rows, so building the whole
+    mapping is expensive. With ``wanted`` set, ``position_of_row`` is streamed in
+    chunks and only the requested clips' rows are gathered.
+    """
+    root = Path(path_to_embeddings)
+    clip_ids_npy = root / f"{embed_type}_clip_ids_{index_tag}.npy"
+    position_npy = root / f"{embed_type}_position_of_row_{index_tag}.npy"
+    if not (clip_ids_npy.exists() and position_npy.exists()):
+        raise FileNotFoundError(
+            f"Mean pooling needs the .npy sidecars for {embed_type}/{index_tag} "
+            f"under {root} (clip_ids + position_of_row)."
+        )
+    clip_ids = np.load(clip_ids_npy, allow_pickle=True)
+    pos = np.load(position_npy, mmap_mode="r")  # position_of_row[r] -> clip position
+
+    if wanted is None:  # full mapping (heavy; only sane for small indices)
+        p = np.asarray(pos)
+        order = np.argsort(p, kind="stable")
+        starts = np.searchsorted(p[order], np.arange(len(clip_ids) + 1))
+        return {str(clip_ids[i]): order[starts[i]:starts[i + 1]].tolist()
+                for i in range(len(clip_ids))}
+
+    wanted = {str(c) for c in wanted}
+    keep_pos = np.fromiter((str(c) in wanted for c in clip_ids),
+                           dtype=bool, count=len(clip_ids))
+    sel_pos, sel_row = [], []
+    for s in range(0, len(pos), chunk):
+        block = np.asarray(pos[s:s + chunk])
+        m = keep_pos[block]
+        idx = np.nonzero(m)[0]
+        if len(idx):
+            sel_pos.append(block[idx])
+            sel_row.append(idx + s)
+    if not sel_pos:
+        return {}
+    sp = np.concatenate(sel_pos)
+    sr = np.concatenate(sel_row)
+    order = np.argsort(sp, kind="stable")
+    sp, sr = sp[order], sr[order]
+    uniq, starts = np.unique(sp, return_index=True)
+    bounds = list(starts) + [len(sp)]
+    return {str(clip_ids[p]): sr[bounds[i]:bounds[i + 1]].tolist()
+            for i, p in enumerate(uniq)}
+
+
+def pool_clip_features(features_index, clip_to_rows, clip_ids, batch_size=1_000_000):
+    """Mean-pool each clip's rows into a single vector, reconstructing in batches.
+
+    Returns an ``(len(clip_ids), d)`` float32 matrix aligned with ``clip_ids``.
+    """
+    d = features_index.d
+    sums = np.zeros((len(clip_ids), d), dtype=np.float32)
+    flat_rows, flat_clip = [], []
+    for i, c in enumerate(clip_ids):
+        rows = clip_to_rows[c]
+        flat_rows.extend(rows)
+        flat_clip.extend([i] * len(rows))
+    flat_rows = np.asarray(flat_rows, dtype="int64")
+    flat_clip = np.asarray(flat_clip, dtype="int64")
+    counts = np.bincount(flat_clip, minlength=len(clip_ids)).astype(np.float32)
+    for s in range(0, len(flat_rows), batch_size):
+        recon = features_index.reconstruct_batch(flat_rows[s:s + batch_size])
+        np.add.at(sums, flat_clip[s:s + batch_size], recon)
+    return sums / np.maximum(counts, 1.0)[:, None]
