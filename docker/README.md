@@ -4,21 +4,20 @@
 # Docker images
 
 If you'd rather not set up the conda environment, you can run SIL-Wheel from
-Docker instead. Most people need two of these images: `server` to browse and
-search a dataset you already prepared, and `pipeline` to build that dataset from
-raw video. Both are thin layers on a shared `base`, so you build `base` once and
-then whichever you need.
+Docker instead. Most people need two of these images: `pipeline` to build a
+dataset from raw video, and `server` to browse and search it. Both are thin
+layers on a shared `base`, so you build `base` once and then whichever you need.
 
 | Image | Build with | What it does |
 | :--- | :--- | :--- |
 | `silwheel:base` | `docker/base.Dockerfile` | The shared runtime (the package plus FAISS). Build it first; you don't run it directly. |
+| `silwheel:pipeline` | `docker/pipeline.Dockerfile` | Runs the preparation pipeline that turns raw video into a dataset. |
 | `silwheel:server` | `docker/server.Dockerfile` | Starts the SIL-Wheel web UI and search over a prepared dataset. |
-| `silwheel:pipeline` | `docker/pipeline.Dockerfile` | Runs the preparation pipeline that turns raw video into a dataset you can serve. |
 
 ```bash
 docker build -f docker/base.Dockerfile     -t silwheel:base .
-docker build -f docker/server.Dockerfile   -t silwheel:server .
 docker build -f docker/pipeline.Dockerfile -t silwheel:pipeline .
+docker build -f docker/server.Dockerfile   -t silwheel:server .
 ```
 
 Add `--gpus all` when you run an image so FAISS and the model encoders can use
@@ -26,49 +25,75 @@ your GPUs. Everything still works on CPU without it, though the pipeline is only
 practical on a GPU. On Kubernetes, request `nvidia.com/gpu: 1` and the device
 plugin takes care of the rest.
 
-## Running the server
+## How it fits together
 
-The server serves a prepared `wheel-data` directory: a `config.yaml` together
-with the embedding, caption, and trajectory stores it points to. The example
-walkthroughs under [`examples/`](../examples) produce exactly this layout. Mount
-the directory, pass its config, and the server listens on the address set in the
-config's `bindto`.
+The two images run one after the other, not at once. The pipeline is a one-shot
+job that prepares a `wheel-data` directory and exits; the server is a long-lived
+process that mounts that directory and serves it. The directory on disk is the
+handoff between them.
 
-```bash
-docker run --gpus all --rm -p 8012:8012 \
-  -v /path/to/wheel-data-physical-ai:/data/wheel-data:ro \
-  silwheel:server /data/wheel-data/config.yaml
+```
+  Hugging Face dataset
+          │
+          ▼   silwheel:pipeline     one-shot job, exits when done
+   ┌───────────────┐
+   │  wheel-data/  │   embeddings · captions · trajectories · config.yaml
+   └───────────────┘
+          │
+          ▼   silwheel:server       long-lived service
+   browser / API   ──▶   search the prepared corpus
 ```
 
-Open the printed bind address in a browser. The text and image search encoders
-use the GPU when one is available and fall back to CPU otherwise. If a dataset
-has no embeddings yet the server still starts and the UI comes up; those searches
-just return nothing.
+On Kubernetes this maps to a `Job` for the pipeline and a `Deployment` plus
+`Service` for the server, sharing one `PersistentVolumeClaim` (the pipeline
+mounts it read-write, the server read-only). On a single host it is the same
+idea with a host directory in place of the volume.
 
-## Running the pipeline
+One thing to get right: `setup_physical_ai.py` writes **absolute** paths into
+`config.yaml`, so the server has to see the data at the same path the pipeline
+wrote it to. The simplest way to guarantee that is to mount the same host
+directory at the same container path in both steps, as below.
 
-The pipeline image runs the getting-started walkthrough end to end. It downloads
-a slice of NVIDIA's [Physical AI Autonomous Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles)
+## 1. Build a dataset (pipeline)
+
+The pipeline runs the getting-started walkthrough end to end. It downloads a
+slice of NVIDIA's [Physical AI Autonomous Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles)
 dataset and prepares a `wheel-data` directory (caption and video embeddings,
-captions, visual embeddings, trajectories, and a `config.yaml`) that the server
-image can then serve.
+captions, visual embeddings, trajectories, and a `config.yaml`).
 
 ```bash
 docker run --gpus all --rm \
-  -v /path/to/out:/data/out \
+  -v /srv/wheel:/srv/wheel \
   -v $HF_HOME:/data/hf -e HF_HOME=/data/hf -e HF_TOKEN=hf_xxx \
   silwheel:pipeline \
   examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py \
-  --workdir /data/out/wheel-data-physical-ai --chunks 0-3
+  --workdir /srv/wheel/physical-ai --chunks 0-3
 ```
 
 The dataset is gated, so accept its license and provide a Hugging Face token with
 `-e HF_TOKEN=...`, or mount a cache you have already logged into. The entrypoint
 is `python`, so you can run any other extractor under `scripts/` the same way.
-When it finishes, point the server image at
-`/data/out/wheel-data-physical-ai/config.yaml`.
 
-## How the images fit together
+## 2. Serve it (server)
+
+Point the server at the `config.yaml` the pipeline wrote, mounting the same host
+directory at the same path so those absolute paths resolve.
+
+```bash
+docker run --gpus all --rm -p 8012:8012 \
+  -v /srv/wheel:/srv/wheel:ro \
+  silwheel:server /srv/wheel/physical-ai/config.yaml
+```
+
+Open the bind address printed at startup in a browser. The text and image search
+encoders use the GPU when one is available and fall back to CPU otherwise. If a
+dataset has no embeddings yet the server still starts and the UI comes up; those
+searches just return nothing.
+
+If you already have a prepared `wheel-data` directory, you can skip step 1 and go
+straight here, mounting it at whatever path its `config.yaml` expects.
+
+## Dependencies
 
 The base image installs the full SIL-Wheel runtime, so the server needs nothing
 extra and the pipeline only adds vLLM and ffmpeg for captioning and video
