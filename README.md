@@ -112,6 +112,10 @@ Two optional extras:
 `flash-attn` does not build cleanly against CUDA 13.0 and PyTorch 2.10. We
 recommend skipping it; the PyTorch fallback is slightly slower but works fine.
 
+**Prefer containers?** You can build and run SIL-Wheel from Docker instead of the
+conda environment. See [`docker/`](docker/README.md) for the data preparation and
+server images.
+
 ## Quickstart
 
 The quickest way to have a working version of SIL-Wheel is to run one of the example
