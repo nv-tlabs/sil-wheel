@@ -29,8 +29,8 @@ def get_embedding_model(**kwargs) -> torch.nn.Module:
     model_type = kwargs["model_type"]
     if model_type.startswith("pe_core"):
         # PE-Core needs perception_models (the `core` module), an optional
-        # dependency. Import it lazily so the rest of the package -- and the
-        # server -- work without it installed.
+        # dependency. Import it lazily so the rest of the package and the
+        # server work without it installed.
         from .pe_core import PECore
 
         return PECore(**kwargs)
