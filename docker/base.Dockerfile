@@ -35,3 +35,10 @@ COPY scripts ./scripts
 # FAISS (shared by serving + index building) then the package runtime.
 RUN pip install "faiss-gpu==1.14.3" \
     && pip install -e .
+
+# sil_wheel.embeddings imports the `core` module from perception_models at
+# import time, so the server and extractors need it. --no-deps keeps it from
+# downgrading transformers/numpy (matches the conda install in the root README).
+# flash-attn is intentionally skipped; the PyTorch attention fallback works.
+RUN pip install --no-deps \
+        git+https://github.com/facebookresearch/perception_models.git
