@@ -20,10 +20,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /opt/sil-wheel
 
-# build-essential for native wheels; libgomp1 for the FAISS OpenMP runtime.
+# build-essential for native wheels; libgomp1 for the FAISS OpenMP runtime;
+# git so pip can install perception_models from its repo.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libgomp1 \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip
