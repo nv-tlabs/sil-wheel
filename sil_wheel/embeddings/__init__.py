@@ -15,7 +15,6 @@
 
 import torch
 from .cosmos_embed1 import CosmosEmbed1
-from .pe_core import PECore
 from .qwen3_vl_embed import Qwen3VLEmbed
 
 
@@ -26,10 +25,15 @@ def get_embedding_model(**kwargs) -> torch.nn.Module:
         "cosmos_embed1_448p": CosmosEmbed1,
         "qwen3_vl_embed_2b": Qwen3VLEmbed,
         "qwen3_vl_embed_8b": Qwen3VLEmbed,
-        "pe_core_b16_224p": PECore,
-        "pe_core_l14_336p": PECore,
-        "pe_core_g14_448p": PECore,
     }
-    if kwargs["model_type"] not in model_classes:
-        raise ValueError(f"Unknown embedding type: {kwargs['model_type']}")
-    return model_classes[kwargs["model_type"]](**kwargs)
+    model_type = kwargs["model_type"]
+    if model_type.startswith("pe_core"):
+        # PE-Core needs perception_models (the `core` module), an optional
+        # dependency. Import it lazily so the rest of the package -- and the
+        # server -- work without it installed.
+        from .pe_core import PECore
+
+        return PECore(**kwargs)
+    if model_type not in model_classes:
+        raise ValueError(f"Unknown embedding type: {model_type}")
+    return model_classes[model_type](**kwargs)

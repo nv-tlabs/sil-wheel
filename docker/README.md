@@ -100,3 +100,12 @@ extra and the pipeline only adds vLLM and ffmpeg for captioning and video
 decoding. FAISS comes from the base as `faiss-gpu`. If you'd rather install
 SIL-Wheel with pip outside Docker, `pip install -e ".[server]"` (or `.[pipeline]`)
 pulls a portable `faiss-cpu` build, and vLLM for the pipeline.
+
+The PE-Core encoder is optional and off by default. It needs `perception_models`,
+which pip installs from git (a corporate TLS proxy can block that), and the
+getting-started flow does not use it. To include it, build the base with the
+encoder turned on:
+
+```bash
+docker build -f docker/base.Dockerfile --build-arg INSTALL_PECORE=true -t silwheel:base .
+```

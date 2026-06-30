@@ -20,12 +20,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /opt/sil-wheel
 
-# build-essential for native wheels; libgomp1 for the FAISS OpenMP runtime;
-# git so pip can install perception_models from its repo.
+# build-essential for native wheels; libgomp1 for the FAISS OpenMP runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libgomp1 \
-        git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip
@@ -38,9 +36,16 @@ COPY scripts ./scripts
 RUN pip install "faiss-gpu==1.14.3" \
     && pip install -e .
 
-# sil_wheel.embeddings imports the `core` module from perception_models at
-# import time, so the server and extractors need it. --no-deps keeps it from
-# downgrading transformers/numpy (matches the conda install in the root README).
-# flash-attn is intentionally skipped; the PyTorch attention fallback works.
-RUN pip install --no-deps \
-        git+https://github.com/facebookresearch/perception_models.git
+# Optional PE-Core encoder. It needs perception_models (the `core` module),
+# pulled from git, which a corporate TLS proxy may block. Off by default; the
+# getting-started flow does not use it. Enable with:
+#   docker build --build-arg INSTALL_PECORE=true ...
+# --no-deps keeps it from downgrading transformers/numpy; flash-attn is skipped
+# (the PyTorch attention fallback works).
+ARG INSTALL_PECORE=false
+RUN if [ "$INSTALL_PECORE" = "true" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends git \
+        && rm -rf /var/lib/apt/lists/* \
+        && pip install --no-deps \
+            git+https://github.com/facebookresearch/perception_models.git ; \
+    fi
