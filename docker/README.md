@@ -62,17 +62,20 @@ dataset and prepares a `wheel-data` directory (caption and video embeddings,
 captions, visual embeddings, trajectories, and a `config.yaml`).
 
 ```bash
+mkdir -p /srv/wheel ~/.cache/huggingface
 docker run --gpus all --rm \
   -v /srv/wheel:/srv/wheel \
-  -v $HF_HOME:/data/hf -e HF_HOME=/data/hf -e HF_TOKEN=hf_xxx \
+  -v ~/.cache/huggingface:/data/hf -e HF_HOME=/data/hf -e HF_TOKEN=hf_xxx \
   silwheel:pipeline \
   examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py \
   --workdir /srv/wheel/physical-ai --chunks 0-3
 ```
 
-The dataset is gated, so accept its license and provide a Hugging Face token with
-`-e HF_TOKEN=...`, or mount a cache you have already logged into. The entrypoint
-is `python`, so you can run any other extractor under `scripts/` the same way.
+The dataset is gated, so accept its license and pass a real Hugging Face token in
+place of `hf_xxx`. The `~/.cache/huggingface` mount reuses your existing HF cache
+so models and dataset shards are not re-downloaded each run; point it anywhere
+with room to spare. The entrypoint is `python`, so you can run any other
+extractor under `scripts/` the same way.
 
 ## 2. Serve it (server)
 
