@@ -53,7 +53,7 @@ export CAPTIONS_DB=./wheel-data-physical-ai/captions.db
 
 The loader writes `cosmos_embeddings/`, `caption_embeddings/`, `visual_embeddings/` shards plus `captions.db` under the workdir. Ingest turns those into `npz/cosmos.npz`, `npz/caption.npz`, `npz/visual.npz` (each holds `clip_ids` + `embeddings`), `npz/pai_clip_ids.json` (clips covered by every encoder, for `cluster_raw.py --pool`), and `npz/pool_summary.json`. The same npz files feed `evaluations/embedding_quality`.
 
-The public example uses smaller query-time models than the paper (Qwen3-Embedding-0.6B captions, SigLIP2-base, Qwen3-VL-4B captions), so embedding dimensions and absolute numbers differ from the reported runs while the workflow is identical. Internal research dumps use `--layout internal` (adds the `qwen3_vl` and `pe_core` encoders); the after-index passes (`prep.py pool` + `run_embedding_clustering.py`) read a served FAISS index and are internal-only.
+The public example uses smaller query-time models than the paper (Qwen3-Embedding-0.6B captions, SigLIP2-base, Qwen3-VL-4B captions), so embedding dimensions and absolute numbers differ from the reported runs while the workflow is identical. Internal research dumps use `--layout internal` (adds the `qwen3_vl` and `pe_core` encoders). The after-index check is reproducible from the npz via `preindex_compare.py --raw-npz` (self-quantizes the raw vectors with a given `--index-spec`), which is what `run_embedding_clustering.py` runs; only the `--wheel-data-dir` variant that reconstructs from the *served production* index is internal-only.
 
 ### 2. Cluster each embedding (k=50, exact)
 
