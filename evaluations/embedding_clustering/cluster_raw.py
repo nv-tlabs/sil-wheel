@@ -188,7 +188,7 @@ def main(argv=None):
         "--runs-tsv",
         type=Path,
         default=None,
-        help="[flat] append a run-tracking row (matches run_full_cluster.sh)",
+        help="[flat] append a run-tracking row (matches run_embedding_clustering.py)",
     )
     ap.add_argument("--pool-name", default="pai", help="[flat] pool label for runs.tsv")
     ap.add_argument(

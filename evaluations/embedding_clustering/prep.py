@@ -303,7 +303,7 @@ def cmd_synthetic(args):
     print(
         f"  WHEEL_DATA_DIR=$WD CAPTIONS_DB=$DB POOLS_DIR={out}/emb_pools CLUSTER_OUT={out}/clustering \\"
     )
-    print("      POOL=full K=20 bash run_full_cluster.sh")
+    print("      python run_embedding_clustering.py --k 20 (see its README section)")
     return 0
 
 
@@ -339,7 +339,7 @@ def main(argv=None):
 
     p = sub.add_parser("fig-runs", help="fig_runs.json from runs.tsv")
     p.add_argument(
-        "--runs", type=Path, required=True, help="runs.tsv from run_full_cluster.sh"
+        "--runs", type=Path, required=True, help="runs.tsv from run_embedding_clustering.py"
     )
     p.add_argument("--clustering-dir", type=Path, required=True)
     p.add_argument("--out", type=Path, default=Path("fig_runs.json"))

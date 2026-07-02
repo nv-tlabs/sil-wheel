@@ -22,7 +22,20 @@ make_figures.py <fig>       figures and tables (see Outputs)
 preindex_compare.py         exact vs PQ clustering: agreement + compression
 ```
 
-Two passes feed the figures: a **k=50 exact** pass per embedding (overlay maps, tables, drill-down) and a **k=1000** pass (`run_full_cluster.sh`) for the at-scale overview and the pre/after-index check.
+Two passes feed the figures: a **k=50 exact** pass per embedding (overlay maps, tables, drill-down) and a **k=1000** pass for the at-scale overview and the pre/after-index check.
+
+### Run everything (one command)
+
+`run_embedding_clustering.py` sequences all stages (flat clustering + topics, hierarchical taxonomy, pre/after-index comparison, caption PC ablation, figures) and writes a single `summary.json`. It is the clustering-side counterpart to `embedding_quality/run_embedding_quality.py` and supersedes the old shell driver; a stage whose inputs are missing is skipped rather than failing.
+
+```bash
+python run_embedding_clustering.py \
+  --npz-dir ./embeddings --pool ./emb_pools/full_clip_ids.json --pool-name full \
+  --captions-db ./captions.db --output-dir ./out --k 1000
+# subset of stages: --stages flat preindex
+```
+
+The per-stage scripts below remain runnable on their own; the runner just calls them in-process.
 
 ### 1. Build embeddings from the Physical AI dataset, then ingest
 
@@ -40,7 +53,7 @@ export CAPTIONS_DB=./wheel-data-physical-ai/captions.db
 
 The loader writes `cosmos_embeddings/`, `caption_embeddings/`, `visual_embeddings/` shards plus `captions.db` under the workdir. Ingest turns those into `npz/cosmos.npz`, `npz/caption.npz`, `npz/visual.npz` (each holds `clip_ids` + `embeddings`), `npz/pai_clip_ids.json` (clips covered by every encoder, for `cluster_raw.py --pool`), and `npz/pool_summary.json`. The same npz files feed `evaluations/embedding_quality`.
 
-The public example uses smaller query-time models than the paper (Qwen3-Embedding-0.6B captions, SigLIP2-base, Qwen3-VL-4B captions), so embedding dimensions and absolute numbers differ from the reported runs while the workflow is identical. Internal research dumps use `--layout internal` (adds the `qwen3_vl` and `pe_core` encoders); the after-index passes (`prep.py pool` + `run_full_cluster.sh`) read a served FAISS index and are internal-only.
+The public example uses smaller query-time models than the paper (Qwen3-Embedding-0.6B captions, SigLIP2-base, Qwen3-VL-4B captions), so embedding dimensions and absolute numbers differ from the reported runs while the workflow is identical. Internal research dumps use `--layout internal` (adds the `qwen3_vl` and `pe_core` encoders); the after-index passes (`prep.py pool` + `run_embedding_clustering.py`) read a served FAISS index and are internal-only.
 
 ### 2. Cluster each embedding (k=50, exact)
 
@@ -131,8 +144,9 @@ python -m pytest evaluations/embedding_clustering/tests/ -q
 O=./synth_starter
 python prep.py synthetic --out $O
 python prep.py pool --wheel-data-dir $O/wheel-data --out $O/emb_pools
-WHEEL_DATA_DIR=$O/wheel-data CAPTIONS_DB=$O/captions.db POOLS_DIR=$O/emb_pools \
-  CLUSTER_OUT=$O/clustering POOL=full K=20 bash run_full_cluster.sh
+python run_embedding_clustering.py --npz-dir $O/wheel-data \
+  --pool $O/emb_pools/full_clip_ids.json --pool-name full \
+  --captions-db $O/captions.db --output-dir $O/clustering --k 20 --stages flat
 python prep.py fig-runs --runs $O/emb_pools/runs.tsv --clustering-dir $O/clustering --out $O/fig_runs.json
 python make_figures.py umap-overview --clustering-dir $O/clustering --fig-runs $O/fig_runs.json --out $O/umap_overview.png
 ```
