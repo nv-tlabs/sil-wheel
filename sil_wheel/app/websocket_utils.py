@@ -20,7 +20,9 @@ import os
 import websockets
 from websockets.server import WebSocketServerProtocol
 
-WS_HOST = os.getenv("WHEEL_WS_HOST", "0.0.0.0")
+# No auth on this socket, so it stays on loopback by default; set
+# WHEEL_WS_HOST=0.0.0.0 to expose it to the network deliberately.
+WS_HOST = os.getenv("WHEEL_WS_HOST", "127.0.0.1")
 WS_PORT = int(os.getenv("WHEEL_WS_PORT", "7000"))
 
 connected_clients: "set[WebSocketServerProtocol]" = set()

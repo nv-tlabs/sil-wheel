@@ -84,6 +84,7 @@ from sil_wheel.app.sheets_client import append_to_spreadsheet
 from sil_wheel.app.arena_handler import ArenaHandlerMixin
 from sil_wheel.app.websocket_utils import run_ws_server, ws_broadcast_threadsafe
 
+
 def log_rss(label):
     with open("/proc/self/status") as f:
         for line in f:
@@ -100,33 +101,24 @@ LABEL_TYPES = sorted(["manual", "autolabel"])
 
 SESSION_COOKIE = "session_id"
 
-LOG_DIR = "/path/to/wheel-data/logs/"
-if not Path(LOG_DIR).exists():
-    LOG_DIR = "/tmp/logs/"
-Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
-LOG_FILE = (
-    LOG_DIR
-    + f"server_logs_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S-%f')}.txt"
-)
 
-STATS_DIR = "/path/to/wheel-data/dataset_stats"
-if not Path(STATS_DIR).exists():
-    STATS_DIR = "/tmp/dataset_stats/"
-Path(STATS_DIR).mkdir(parents=True, exist_ok=True)
-DATA_STATS_DIR = "data_stats"
-TRAJECTORY_STATS_DIR = "trajectory_stats"
-
-#create log file if it doesn't exist
-os.makedirs(LOG_DIR, exist_ok=True)
-if not os.path.exists(LOG_FILE):
-    with open(LOG_FILE, "w") as f:
-        f.write("")
-
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=logging.INFO,
-    format="%(asctime)s %(message)s",
-)
+def configure_logging_and_stats(server_cfg):
+    """Create log files based on the timestamp that the server was launched."""
+    log_dir = server_cfg.get("log_dir", "/tmp/logs")
+    stats_dir = server_cfg.get("datasets_stats_dir", "/tmp/dataset_stats/")
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    Path(stats_dir).mkdir(parents=True, exist_ok=True)
+    log_file = os.path.join(
+        log_dir,
+        f"server_logs_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S-%f')}.txt",
+    )
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format="%(asctime)s %(message)s",
+        force=True,
+    )
+    return log_dir, stats_dir
 
 
 def load_config(config_file):
@@ -135,8 +127,12 @@ def load_config(config_file):
     return config
 
 
-def apply_overrides(config: dict, overrides: list) -> None:
-    for item in overrides or []:
+def apply_overrides(config: dict, overrides: list | None = None):
+    """Override the default arguments in the config"""
+    if overrides is None:
+        overrides = []
+
+    for item in overrides:
         key_path, _, value = item.partition("=")
         keys = key_path.split(".")
         node = config
@@ -315,7 +311,6 @@ class LocalFileFetcher:
     byte-range support so local videos can be played and seeked efficiently
     in the browser.
     """
-
     def serve(self, handler, fs_path: str, headers: dict):
         try:
             self._serve_with_range(handler, fs_path, headers)
@@ -471,14 +466,8 @@ class BEVFetcher(BaseFetcher):
         return self.clips_with_bev is not None
 
 
-def _embed_dir_is_populated(path) -> bool:
-    """Return True iff the dir has any artifacts the embedding stores read.
-
-    Parquet shards = freshly extracted; .index/.npy/.pkl = a built FAISS index.
-    Used to decide between the heavy real store and a no-op skeleton, so a
-    deployment without (e.g.) caption embeddings doesn't pay the Qwen3-8B
-    load cost on startup.
-    """
+def embed_dir_is_populated(path) -> bool:
+    """Return True if the dir has any artifacts the embedding stores read."""
     if path is None:
         return False
     p = Path(path)
@@ -488,7 +477,22 @@ def _embed_dir_is_populated(path) -> bool:
     return any(next(p.rglob(s), None) is not None for s in suffixes)
 
 
-class _EmptyEmbedStore:
+class NullStore:
+    """Decorator on data stores that makes them optional"""
+    def __init__(self, store):
+        self.store = store
+
+    def search(self, filters, current_results):
+        if self.store is None:
+            return current_results
+        return self.store.search(filters, current_results)
+
+    def invalidate(self, *args, **kwargs):
+        if self.store is not None:
+            self.store.invalidate(*args, **kwargs)
+
+
+class EmptyEmbedStore:
     """Lightweight stand-in for an embedding store when no embeddings exist.
 
     This object implements the same interface as the real embedding stores but
@@ -693,6 +697,8 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
         vlm_judge=None,
         vlm_judge_workers=16,
         agent_url=None,
+        log_dir=None,
+        stats_dir=None,
     ):
         self.datastore = datastore
         self.captionstore = captionstore
@@ -727,6 +733,8 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
         self.vlm_judge = vlm_judge
         self.vlm_judge_workers = vlm_judge_workers
         self.agent_url = agent_url
+        self.log_dir = log_dir
+        self.stats_dir = stats_dir
 
         self.timers = Timer()
         self.directory = None
@@ -1060,8 +1068,8 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
     def _serve_stats_file(self, url_path, url_prefix, subdir):
         rel = url_path[len(url_prefix):]
         rel = rel.replace("\\", "/").lstrip("/")
-        path = (Path(STATS_DIR) / subdir / rel).resolve()
-        base = (Path(STATS_DIR) / subdir).resolve()
+        path = (Path(self.stats_dir) / subdir / rel).resolve()
+        base = (Path(self.stats_dir) / subdir).resolve()
         if (
             not str(path).startswith(str(base))
             or not path.exists()
@@ -1196,7 +1204,8 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
             clips = [clips[c] for c in segment]
 
             captions_by_clip = {
-                cid: self.captionstore.get(cid) for cid in segment
+                cid: self.captionstore.get(cid) if self.captionstore else None
+                for cid in segment
             }
             vlm_caption_scores = {}
             if self.vlm_judge:
@@ -1208,7 +1217,7 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
             # (cluster_id, distance) so the UI can render a "Show cluster"
             # affordance even before the user has narrowed to one cluster.
             cluster_for_clip = {}
-            if filters.cluster_run_id:
+            if filters.cluster_run_id and self.clustersearch:
                 cluster_for_clip = self.clustersearch.cluster_for_clips(
                     list(segment), filters.cluster_run_id
                 )
@@ -1236,8 +1245,14 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                 "dataset_metadata": self.datastore.dataset_metadata(ds_options),
                 "label_type_options": LABEL_TYPES,
                 "project_options": self.datastore.project_options,
-                "with_metrics_available": self.metricstore.has_metrics_index(),
-                "with_bev_available": self.bev_fetcher.has_bev_index(),
+                "with_metrics_available": (
+                    self.metricstore.has_metrics_index()
+                    if self.metricstore else False
+                ),
+                "with_bev_available": (
+                    self.bev_fetcher.has_bev_index()
+                    if self.bev_fetcher else False
+                ),
                 "query_rewrite_available": self.rewriter is not None,
                 "vlm_judge_available": self.vlm_judge is not None,
                 **filters.to_dict(),
@@ -1245,16 +1260,25 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                     {
                         "data_source": clip.data_source,
                         "annotations": clip.to_dict(),
-                        "speed": self.trajectorystore.get_speed(clip_id),
-                        "acceleration": self.trajectorystore.get_acceleration(
-                            clip_id
+                        "speed": (
+                            self.trajectorystore.get_speed(clip_id)
+                            if self.trajectorystore else None
                         ),
-                        "curvature": self.trajectorystore.get_curvature(
-                            clip_id
+                        "acceleration": (
+                            self.trajectorystore.get_acceleration(clip_id)
+                            if self.trajectorystore else None
                         ),
-                        "jerk": self.trajectorystore.get_jerk(clip_id),
-                        "positions": self.trajectorystore.get_positions(
-                            clip_id
+                        "curvature": (
+                            self.trajectorystore.get_curvature(clip_id)
+                            if self.trajectorystore else None
+                        ),
+                        "jerk": (
+                            self.trajectorystore.get_jerk(clip_id)
+                            if self.trajectorystore else None
+                        ),
+                        "positions": (
+                            self.trajectorystore.get_positions(clip_id)
+                            if self.trajectorystore else None
                         ),
                         "captions": captions_by_clip[clip_id],
                         "vlm_caption_scores": vlm_caption_scores.get(clip_id, {}),
@@ -1265,8 +1289,9 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                         "has_embeddings": self.embeddingsstore.has_embeddings(
                             clip_id
                         ),
-                        "has_trajectories": self.trajectorystore.has_trajectories(
-                            clip_id
+                        "has_trajectories": (
+                            self.trajectorystore.has_trajectories(clip_id)
+                            if self.trajectorystore else False
                         ),
                         "semantic_video_score": results[
                             clip_id
@@ -1573,7 +1598,11 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
             projects = self.datastore.project_options
 
             runs = []
-            for metadata in self.classifiersearch.list_runs():
+            classifier_runs = (
+                self.classifiersearch.list_runs()
+                if self.classifiersearch else []
+            )
+            for metadata in classifier_runs:
                 run_id = metadata.get("run_id")
                 if not run_id:
                     continue
@@ -1957,7 +1986,7 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                 cmd = [
                     sys.executable,
                     analyzer,
-                    LOG_DIR,
+                    self.log_dir,
                     tmp_dir,
                     "--json-out",
                     str(json_out),
@@ -2009,8 +2038,8 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
                 return
 
             ds_options = self.usersstore.get_allowed_datasources(user.id)
-            base_traj = Path(STATS_DIR) / TRAJECTORY_STATS_DIR
-            base_data = Path(STATS_DIR) / DATA_STATS_DIR
+            base_traj = Path(self.stats_dir) / "trajectory_stats"
+            base_data = Path(self.stats_dir) / "dataset_stats"
 
             entries = []
             for ds in ds_options:
@@ -2111,12 +2140,12 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
 
         elif parsed_path.path.startswith("/trajectory_stats/"):
             self._serve_stats_file(
-                parsed_path.path, "/trajectory_stats/", TRAJECTORY_STATS_DIR
+                parsed_path.path, "/trajectory_stats/", "trajectory_stats"
             )
 
         elif parsed_path.path.startswith("/dataset_stats/"):
             self._serve_stats_file(
-                parsed_path.path, "/dataset_stats/", DATA_STATS_DIR
+                parsed_path.path, "/dataset_stats/", "data_stats"
             )
 
         elif parsed_path.path == "/clustering_status":
@@ -2946,9 +2975,7 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
             self.handle_arena_post(action, parts)
             return
 
-        # auto_label scopes its work to the caller's allowed datasources,
-        # so the writer must be authenticated.
-        if action == "auto_label" and self._require_user() is None:
+        if self._require_user() is None:
             return
 
         # Core actions
@@ -2977,6 +3004,7 @@ def main(argv=None):
     apply_overrides(config, args.override)
     datastores_cfg = config["datastores"]
     server_cfg = config["server"]
+    log_dir, stats_dir = configure_logging_and_stats(server_cfg)
     # S3 connection settings come from config (not hardcoded) so they can't be
     # baked into / sanitized out of the code; the fetchers below read them.
     s3_endpoint = server_cfg.get("s3_endpoint")
@@ -2987,14 +3015,18 @@ def main(argv=None):
         clips_to_apis = json.load(f)
     autolabelsstore = AutolabelsDataStore(clips_to_apis)
 
-    bev_cfg = datastores_cfg["bev_store"]
-    print(f"Initializing BEV fetcher with bucket: {bev_cfg['s3_bucket']}")
-    bev_fetcher = BEVFetcher(
-        bev_cfg["s3_bucket"],
-        index_dir=bev_cfg["metrics_index_dir"],
-        endpoint=s3_endpoint,
-        profile=s3_profile,
-    )
+    bev_cfg = datastores_cfg.get("bev_store")
+    if bev_cfg:
+        print(f"Initializing BEV fetcher with bucket: {bev_cfg['s3_bucket']}")
+        bev_fetcher = BEVFetcher(
+            bev_cfg["s3_bucket"],
+            index_dir=bev_cfg["metrics_index_dir"],
+            endpoint=s3_endpoint,
+            profile=s3_profile,
+        )
+    else:
+        bev_fetcher = None
+        print("bev_store not configured, skipping")
 
     log_rss("startup")
 
@@ -3004,9 +3036,9 @@ def main(argv=None):
     )
     log_rss("after sqlite")
 
-    cosmos_cfg = datastores_cfg["cosmos_embed_store"]
-    cosmos_dir = cosmos_cfg["embeddings_dir"]
-    if _embed_dir_is_populated(cosmos_dir):
+    cosmos_cfg = datastores_cfg.get("cosmos_embed_store") or {}
+    cosmos_dir = cosmos_cfg.get("embeddings_dir")
+    if embed_dir_is_populated(cosmos_dir):
         print(f"Loading embeddingsstore from {cosmos_dir}")
         embeddingsstore = CosmosEmbeddingsStore(
             cosmos_dir,
@@ -3015,12 +3047,12 @@ def main(argv=None):
         )
     else:
         print(f"[cosmos] No embeddings under {cosmos_dir}; using empty stub (no model loaded)")
-        embeddingsstore = _EmptyEmbedStore(cosmos_dir)
+        embeddingsstore = EmptyEmbedStore(cosmos_dir)
     log_rss("after cosmos")
 
-    clip_embed_cfg = datastores_cfg["visual_embed_store"]
-    clip_embed_dir = clip_embed_cfg["embeddings_dir"]
-    if _embed_dir_is_populated(clip_embed_dir):
+    clip_embed_cfg = datastores_cfg.get("visual_embed_store") or {}
+    clip_embed_dir = clip_embed_cfg.get("embeddings_dir")
+    if embed_dir_is_populated(clip_embed_dir):
         print(f"Loading visual embeddingsstore from {clip_embed_dir}")
         clipembeddingsstore = Florence2SigCLIPEmbeddingStore(
             clip_embed_dir,
@@ -3030,12 +3062,12 @@ def main(argv=None):
         )
     else:
         print(f"[visual] No embeddings under {clip_embed_dir}; using empty stub (no SigLIP loaded)")
-        clipembeddingsstore = _EmptyEmbedStore(clip_embed_dir)
+        clipembeddingsstore = EmptyEmbedStore(clip_embed_dir)
     log_rss("after visual")
 
-    caption_embed_cfg = datastores_cfg["caption_embed_store"]
-    caption_embed_dir = caption_embed_cfg["embeddings_dir"]
-    if _embed_dir_is_populated(caption_embed_dir):
+    caption_embed_cfg = datastores_cfg.get("caption_embed_store") or {}
+    caption_embed_dir = caption_embed_cfg.get("embeddings_dir")
+    if embed_dir_is_populated(caption_embed_dir):
         print(f"Loading captionembeddingsstore from {caption_embed_dir}")
         captionembeddingsstore = CaptionEmbeddingsStore(
             caption_embed_dir,
@@ -3047,39 +3079,54 @@ def main(argv=None):
         )
     else:
         print(f"[caption] No embeddings under {caption_embed_dir}; using empty stub (query model not loaded)")
-        captionembeddingsstore = _EmptyEmbedStore(caption_embed_dir)
+        captionembeddingsstore = EmptyEmbedStore(caption_embed_dir)
     log_rss("after caption")
 
-    traj_cfg = datastores_cfg["trajectory_store"]
-    print(f"Loading trajectorystore from {traj_cfg['trajectory_dir']}")
-    trajectorystore = TrajectoryStore(
-        traj_cfg["trajectory_dir"],
-        server_cfg["debug"],
-        index_spec=traj_cfg.get("index_spec"),
-    )
+    traj_cfg = datastores_cfg.get("trajectory_store")
+    if traj_cfg:
+        print(f"Loading trajectorystore from {traj_cfg['trajectory_dir']}")
+        trajectorystore = TrajectoryStore(
+            traj_cfg["trajectory_dir"],
+            server_cfg["debug"],
+            index_spec=traj_cfg.get("index_spec"),
+        )
+    else:
+        trajectorystore = None
+        print("trajectory_store not configured, skipping")
     log_rss("after trajectory")
 
-    wm_store = None
-    if "wm_store" in datastores_cfg:
-        wm_cfg = datastores_cfg["wm_store"]
+    wm_cfg = datastores_cfg.get("wm_store")
+    if wm_cfg:
         print(f"Loading wm_store from {wm_cfg['data_file']}")
         wm_store = WMStore(wm_cfg["data_file"])
         log_rss("after wm")
     else:
+        wm_store = None
         print("wm_store not configured, skipping")
 
-    print(f"Loading captionstore from {datastores_cfg['captions_db']}")
-    captionstore = CaptionStore(datastores_cfg["captions_db"])
-    log_rss("after caption_store")
+    captions_db = datastores_cfg.get("captions_db")
+    if captions_db:
+        print(f"Loading captionstore from {captions_db}")
+        captionstore = CaptionStore(captions_db)
+        log_rss("after caption_store")
+    else:
+        captionstore = None
+        print("captions_db not configured, skipping")
 
-    pred_cfg = datastores_cfg["predictions_store"]
-    print(f"Loading metricstore from {pred_cfg['predictions_dir']}")
-    metricstore = ModelsWithMetricsDataStore(
-        pred_cfg["predictions_dir"], index_dir=bev_cfg["metrics_index_dir"]
-    )
-    print(f"Loading predictionsstore from {pred_cfg['predictions_dir']}")
-    predictionsstore = PredictionsDataStore(pred_cfg["predictions_dir"])
-    log_rss("after predictions")
+    pred_cfg = datastores_cfg.get("predictions_store")
+    if pred_cfg:
+        metrics_index_dir = bev_cfg["metrics_index_dir"] if bev_cfg else None
+        print(f"Loading metricstore from {pred_cfg['predictions_dir']}")
+        metricstore = ModelsWithMetricsDataStore(
+            pred_cfg["predictions_dir"], index_dir=metrics_index_dir
+        )
+        print(f"Loading predictionsstore from {pred_cfg['predictions_dir']}")
+        predictionsstore = PredictionsDataStore(pred_cfg["predictions_dir"])
+        log_rss("after predictions")
+    else:
+        metricstore = None
+        predictionsstore = None
+        print("predictions_store not configured, skipping")
 
     # Warm up CUDA kernels, model weights, and FAISS caches so the first
     # user query doesn't eat the cold-start tax.
@@ -3089,8 +3136,13 @@ def main(argv=None):
     clipembeddingsstore.warmup()
     log_rss("after warmup")
 
-    classifier_cfg = datastores_cfg["classifier_search"]
-    classifiersearch = ClassifierSearch(classifier_cfg["classifier_dir"])
+    classifier_cfg = datastores_cfg.get("classifier_search")
+    classifier_dir = classifier_cfg["classifier_dir"] if classifier_cfg else None
+    if classifier_dir:
+        classifiersearch = ClassifierSearch(classifier_dir)
+    else:
+        classifiersearch = None
+        print("classifier_search not configured, skipping")
     usersstore = UsersDataStore(datastores_cfg["users_db"])
     slack_notifier = None
     slack_profile = "sil-wheel"
@@ -3226,25 +3278,32 @@ def main(argv=None):
         arena_store = ArenaStore(arena_db_path, arena_s3_client, "processed_data")
         print(f"Arena store initialized: {arena_db_path}")
 
-    clustersearch = ClusterSearch(
-        datastores_cfg["cluster_search"]["clustering_dir"]
-    )
-    cliplistsearch = ClipListSearch(
-        datastores_cfg["clip_list_search"]["clip_lists_dir"]
-    )
+    cluster_cfg = datastores_cfg.get("cluster_search")
+    clustering_dir = cluster_cfg["clustering_dir"] if cluster_cfg else None
+    if clustering_dir:
+        clustersearch = ClusterSearch(clustering_dir)
+    else:
+        clustersearch = None
+        print("cluster_search not configured, skipping")
+    clip_list_cfg = datastores_cfg.get("clip_list_search")
+    if clip_list_cfg:
+        cliplistsearch = ClipListSearch(clip_list_cfg["clip_lists_dir"])
+    else:
+        cliplistsearch = None
+        print("clip_list_search not configured, skipping")
     search_pipeline = SearchPipeline(
         datastore=datastore,
-        captionstore=captionstore,
+        captionstore=NullStore(captionstore),
         captionembeddingsstore=captionembeddingsstore,
         embeddingsstore=embeddingsstore,
         clipembeddingsstore=clipembeddingsstore,
-        classifiersearch=classifiersearch,
-        clustersearch=clustersearch,
-        cliplistsearch=cliplistsearch,
-        trajectorystore=trajectorystore,
-        metricstore=metricstore,
-        bev_fetcher=bev_fetcher,
-        wm_store=wm_store,
+        classifiersearch=NullStore(classifiersearch),
+        clustersearch=NullStore(clustersearch),
+        cliplistsearch=NullStore(cliplistsearch),
+        trajectorystore=NullStore(trajectorystore),
+        metricstore=NullStore(metricstore),
+        bev_fetcher=NullStore(bev_fetcher),
+        wm_store=NullStore(wm_store),
     )
 
     Handler = partial(
@@ -3257,7 +3316,7 @@ def main(argv=None):
         captionembeddingsstore=captionembeddingsstore,
         classifiersearch=classifiersearch,
         wm_store=wm_store,
-        classifier_dir=classifier_cfg["classifier_dir"],
+        classifier_dir=classifier_dir,
         metricstore=metricstore,
         predictionsstore=predictionsstore,
         autolabelsstore=autolabelsstore,
@@ -3271,7 +3330,7 @@ def main(argv=None):
         clips_to_apis=clips_to_apis,
         bev_fetcher=bev_fetcher,
         clustering_jobs=JobRegistry(),
-        clustering_dir=datastores_cfg["cluster_search"]["clustering_dir"],
+        clustering_dir=clustering_dir,
         clustersearch=clustersearch,
         cliplistsearch=cliplistsearch,
         slack_notifier=slack_notifier,
@@ -3282,6 +3341,8 @@ def main(argv=None):
         vlm_judge=vlm_judge,
         vlm_judge_workers=server_cfg.get("vlm_judge_workers", 20),
         agent_url=server_cfg.get("agent_url", ""),
+        log_dir=log_dir,
+        stats_dir=stats_dir,
     )
 
     with ThreadingTCPServer(address, Handler) as httpd:

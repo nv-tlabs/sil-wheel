@@ -63,6 +63,8 @@ clips_to_sil_apis: "/path/to/wheel-data/clips_to_apis_latest.json"
 server:
     bindto: "0.0.0.0:8080"
     debug: false
+    log_dir: "/path/to/wheel-data/logs/"
+    datasets_stats_dir: "/path/to/wheel-data/dataset_stats"
     vlm_judge_workers: 20
     bug_report:
         spreadsheet_id: "<your-google-sheet-id>"

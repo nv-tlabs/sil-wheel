@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Text-video retrieval benchmark for MSR-VTT, PVD-Bench, and OpenDV.
-
-Scores every baseline in ``BASELINES`` alone, then every cross-family
-pair and triplet fused with RRF and z-score.
-"""
+"""Text-video retrieval benchmark for MSR-VTT, PVD-Bench, and OpenDV."""
 import argparse
 import time
 from itertools import combinations
@@ -214,18 +210,11 @@ def eval_combos(size, rrf_terms, zscore_terms, available, label):
 
 
 def write_results(sections, args):
-    """Print every section's table; also save JSON/MD if paths given."""
+    """Print every section's table; also save the Markdown leaderboard if a
+    path is given."""
     for title, section in sections:
         print()
         print(render_table(title, section), flush=True)
-    if args.results_json:
-        all_results = {}
-        for _, section in sections:
-            all_results.update(section)
-        args.results_json.write_bytes(
-            orjson.dumps(all_results, option=orjson.OPT_INDENT_2)
-        )
-        print(f"\nWrote {args.results_json}")
     if args.results_md:
         body = [f"# {args.dataset} retrieval benchmark", ""]
         for title, section in sections:
@@ -268,10 +257,6 @@ def main():
         default="long",
         help="Which OpenDV caption variant to use as the query text "
              "(default: long). Only used by the opendv dataset.",
-    )
-    parser.add_argument(
-        "--results_json", type=Path,
-        help="Path to write the full results as JSON.",
     )
     parser.add_argument(
         "--results_md", type=Path,
