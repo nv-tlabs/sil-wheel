@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for the caption facet-text grouping (no GPU / no LLM)."""
-from caption_faceting import FACETS, facet_text
+from cap_facet_emb import FACETS, facet_text
 
 
 def test_facet_text_groups_and_flattens_lists():

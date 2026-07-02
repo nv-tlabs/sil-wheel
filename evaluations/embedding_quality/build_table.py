@@ -32,7 +32,7 @@ EMBEDDING_DISPLAY = {
     "florence2_sigclip_grounding_balanced_chamfer_kmedoids": (
         "Region Chamfer (grounded, set)"
     ),
-    # Caption-faceting analysis rows (see caption_faceting.py); scored on the
+    # Caption-faceting analysis rows (see cap_facet_emb.py); scored on the
     # standard vector path, rendered in the separate caption-faceting table.
     "caption_facet_scene": "Caption facet: scene (4096-d)",
     "caption_facet_road_entities": "Caption facet: road entities (4096-d)",

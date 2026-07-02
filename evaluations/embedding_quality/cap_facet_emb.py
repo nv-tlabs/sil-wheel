@@ -34,8 +34,8 @@ The related common-component-removal ablation lives in
 ``evaluations/embedding_clustering/caption_pc_ablation.py``.
 
   set -a; . .env; set +a   # NV_INFERENCE_API_KEYS=key1,key2,...
-  python caption_faceting.py segment --captions captions.parquet --out facets.jsonl
-  python caption_faceting.py embed   --facets facets.jsonl --out-dir ./embeddings
+  python cap_facet_emb.py segment --captions captions.parquet --out facets.jsonl
+  python cap_facet_emb.py embed   --facets facets.jsonl --out-dir ./embeddings
 """
 from __future__ import annotations
 
