@@ -137,6 +137,22 @@ def _get(url):
     return urlopen(Request(url, method="GET"), timeout=5)
 
 
+def _post(url, payload, cookie=None):
+    headers = {"Content-Type": "text/plain"}
+    if cookie is not None:
+        headers["Cookie"] = cookie
+    return urlopen(
+        Request(url, data=payload.encode(), headers=headers, method="POST"),
+        timeout=5,
+    )
+
+
+def _login_cookie(users_db):
+    uid = users_db.create_user("alice", "pwd123")
+    sid = users_db.create_session(uid)
+    return f"{launch_server.SESSION_COOKIE}={sid}"
+
+
 def test_login_page_served(server):
     resp = _get(f"{server}/login")
     assert resp.status == 200
@@ -182,3 +198,44 @@ def test_endpoints_reject_unauthenticated(server, path):
     with pytest.raises(HTTPError) as excinfo:
         _get(f"{server}{path}")
     assert excinfo.value.code == 403
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "add::ds-A-clip-05::ann-x::lbl::-1::-1::proj-A",
+        "remove::ds-A-clip-01::ann-01::turn_left::-1::-1::proj-A",
+        "verify::ds-A-clip-01::ann-01::turn_left::-1::-1::proj-A",
+        "update_times::ds-A-clip-01::ann-01::turn_left::0::1::proj-A",
+        "mass_label::lbl::ds-A-clip-01,ds-A-clip-02::proj-A",
+        "upload_annotations::ds-A-clip-01::lbl::-1::-1::proj-A::",
+        "upload_captions::model::src-A::",
+        "reconstruction::ds-A-clip-01::NuRec",
+    ],
+    ids=lambda p: p.split("::")[0],
+)
+def test_core_post_rejects_unauthenticated(server, payload):
+    # handle_core_post mutates annotations/captions or launches jobs, so
+    # every core action must 403 without a session cookie (previously only
+    # auto_label was gated).
+    with pytest.raises(HTTPError) as excinfo:
+        _post(f"{server}/", payload)
+    assert excinfo.value.code == 403
+
+
+def test_core_post_add_succeeds_authenticated(server, data_store, users_db):
+    # A logged-in user still lands the write: the blanket gate must not
+    # over-block the authenticated path.
+    cookie = _login_cookie(users_db)
+    resp = _post(
+        f"{server}/",
+        "add::ds-A-clip-05::ann-new::my_label::-1::-1::proj-A",
+        cookie=cookie,
+    )
+    assert resp.status == 200
+    row = data_store.conn.execute(
+        "SELECT key, project FROM annotations WHERE uid = ?", ("ann-new",)
+    ).fetchone()
+    assert row is not None
+    assert row["key"] == "my_label"
+    assert row["project"] == "proj-A"

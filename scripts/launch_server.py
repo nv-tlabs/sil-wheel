@@ -2975,9 +2975,7 @@ class RequestHandler(ArenaHandlerMixin, RangeRequestHandler):
             self.handle_arena_post(action, parts)
             return
 
-        # auto_label scopes its work to the caller's allowed datasources,
-        # so the writer must be authenticated.
-        if action == "auto_label" and self._require_user() is None:
+        if self._require_user() is None:
             return
 
         # Core actions
