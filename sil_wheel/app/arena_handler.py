@@ -19,6 +19,7 @@ import logging
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import unquote
 
 log = logging.getLogger("arena")
 
@@ -82,7 +83,8 @@ class ArenaHandlerMixin:
             user, allowed = self._check_arena_access(name)
             if not allowed:
                 return self._send_json({"error": "not found"}, status=404)
-            return self._send_json(self.arena_store.get_leaderboard(name))
+            criterion = parsed_qs.get("criterion", [None])[0]
+            return self._send_json(self.arena_store.get_leaderboard(name, criterion=criterion))
 
         if path == "/arena/history":
             name = parsed_qs.get("name", [None])[0]
@@ -95,29 +97,14 @@ class ArenaHandlerMixin:
             offset = int(parsed_qs.get("offset", [0])[0])
             return self._send_json(self.arena_store.get_history(name, limit, offset))
 
-        if path == "/arena/export":
+        if path == "/arena/votes":
             name = parsed_qs.get("name", [None])[0]
             if not name:
                 return self._send_json({"error": "missing name"}, status=400)
             user, allowed = self._check_arena_access(name)
             if not allowed:
                 return self._send_json({"error": "not found"}, status=404)
-            csv_data = self.arena_store.export_votes_csv(name)
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv")
-            self.send_header("Content-Disposition", f'attachment; filename="{name}_votes.csv"')
-            self.end_headers()
-            self.wfile.write(csv_data.encode("utf-8"))
-            return True
-
-        if path == "/arena/elo_confidence":
-            name = parsed_qs.get("name", [None])[0]
-            if not name:
-                return self._send_json({"error": "missing name"}, status=400)
-            user, allowed = self._check_arena_access(name)
-            if not allowed:
-                return self._send_json({"error": "not found"}, status=404)
-            return self._send_json(self.arena_store.get_elo_confidence(name))
+            return self._send_json({"votes": self.arena_store.get_votes_json(name)})
 
         if path == "/arena/elo_history":
             name = parsed_qs.get("name", [None])[0]
@@ -126,13 +113,14 @@ class ArenaHandlerMixin:
             user, allowed = self._check_arena_access(name)
             if not allowed:
                 return self._send_json({"error": "not found"}, status=404)
-            return self._send_json(self.arena_store.get_elo_history(name))
+            criterion = parsed_qs.get("criterion", [None])[0]
+            return self._send_json(self.arena_store.get_elo_history(name, criterion=criterion))
 
         if path.startswith("/arena/asset/"):
             # /arena/asset/{arena_name}/{item_id}/{filename}
             path_parts = path.split("/")
             if len(path_parts) >= 6:
-                arena_name = path_parts[3]
+                arena_name = unquote(path_parts[3])
                 user, allowed = self._check_arena_access(arena_name)
                 if not allowed:
                     self.send_error(404)
@@ -182,12 +170,23 @@ class ArenaHandlerMixin:
             reasoning = parts[7] if len(parts) > 7 else None
             if reasoning is not None:
                 reasoning = reasoning.strip() or None
+            # criterion is an optional trailing param (defaults to "overall" for backward compat)
+            criterion = parts[8] if len(parts) > 8 else "overall"
+            # duration_ms — wall-clock ms the annotator spent on this vote (per-criterion).
+            # Optional and nullable; client sends "" when out of range or unavailable.
+            duration_ms = None
+            if len(parts) > 9 and parts[9]:
+                try:
+                    duration_ms = int(parts[9])
+                except ValueError:
+                    duration_ms = None
             if not self.arena_store.can_access(arena_name, user.username, user.role):
                 return self._send_json({"error": "not found"}, status=404)
             if winner not in ("a", "b", "tie", "a_strong", "b_strong", "skip", "both_bad"):
                 return self._send_json({"error": "invalid winner"}, status=400)
             result = self.arena_store.submit_vote(
-                arena_name, match_id, item_id, model_a, model_b, winner, user.id, user.username, reasoning=reasoning
+                arena_name, match_id, item_id, model_a, model_b, winner, user.id, user.username,
+                reasoning=reasoning, criterion=criterion, duration_ms=duration_ms,
             )
             return self._send_json(result)
 
@@ -213,6 +212,16 @@ class ArenaHandlerMixin:
             if not ok:
                 return self._send_json({"error": "failed to refresh"}, status=500)
             return self._send_json({"ok": True})
+
+        if action == "arena_delete_match":
+            user, arena_name = self._require_arena_user(parts, require_owner=True)
+            if not user:
+                return True
+            match_id = parts[2] if len(parts) > 2 else None
+            if not match_id:
+                return self._send_json({"error": "missing match_id"}, status=400)
+            deleted = self.arena_store.delete_match(arena_name, match_id)
+            return self._send_json({"ok": True, "deleted": deleted})
 
         if action == "arena_vlm_judge_batch":
             user, arena_name = self._require_arena_user(parts, require_owner=True)
@@ -254,15 +263,17 @@ class ArenaHandlerMixin:
                     item_id, m1, m2 = triple
                     match_id = str(uuid.uuid4())
                     try:
-                        result = vlm_judge.judge_arena_match(
+                        results = vlm_judge.judge_arena_match(
                             arena_store, arena_name, manifest, item_id, m1, m2
                         )
-                        vote = result.get("vote", "tie")
-                        reasoning = result.get("reasoning", "")
-                        arena_store.submit_vote(
-                            arena_name, match_id, item_id, m1, m2,
-                            vote, vlm_user_id, vlm_username, reasoning=reasoning,
-                        )
+                        # results is always a list of {criterion, vote, reasoning} dicts
+                        for r in results:
+                            arena_store.submit_vote(
+                                arena_name, match_id, item_id, m1, m2,
+                                r.get("vote", "tie"), vlm_user_id, vlm_username,
+                                reasoning=r.get("reasoning", ""),
+                                criterion=r.get("criterion", "overall"),
+                            )
                     except Exception as exc:
                         log.warning("VLM judge failed for %s/%s vs %s: %s", item_id, m1, m2, exc)
 
