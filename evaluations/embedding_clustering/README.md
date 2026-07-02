@@ -137,6 +137,26 @@ python prep.py fig-runs --runs $O/emb_pools/runs.tsv --clustering-dir $O/cluster
 python make_figures.py umap-overview --clustering-dir $O/clustering --fig-runs $O/fig_runs.json --out $O/umap_overview.png
 ```
 
+## Caption PC ablation
+
+Caption clusters look diffuse because a few leading principal components carry
+broad, shared scene structure (lighting / road type / weather) that is largely
+orthogonal to the target scenarios. `pc_topics.py` shows what those components
+encode; `caption_pc_ablation.py` projects them out (fit on the full corpus) and
+writes a `caption_pc<r>.npz` encoder that can be clustered / scored like any
+other. Removing them sharpens label-relevant structure only slightly.
+
+```bash
+# what the leading components encode
+python evaluations/embedding_clustering/pc_topics.py \
+  --caption-npz ./embeddings/caption.npz --captions captions.parquet \
+  --out ./out/pc_topics.json
+
+# build the ablated encoder (then score it via embedding_quality)
+python evaluations/embedding_clustering/caption_pc_ablation.py \
+  --caption-npz ./embeddings/caption.npz --out-dir ./embeddings --remove-pcs 5
+```
+
 ## Notes
 
 - **Visual is anisotropic**: pass `--center`; mean-centring recovers the cosine gap (Δ ~0.10 → ~0.75).

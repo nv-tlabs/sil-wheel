@@ -146,6 +146,44 @@ python evaluations/embedding_quality/build_table.py \
 Drop `--no-spherical-kmeans` when `faiss-cpu` is installed and exact paper
 parity matters.
 
+## Caption faceting
+
+Whether the caption embedding can be *reshaped* to cluster better without
+re-captioning. The dense caption is split into four facets aligned with the
+caption-quality axes (scene / road entities / action / temporal), each embedded
+separately and scored on the standard vector path as ordinary `<name>.npz`
+encoders. (The related common-component-removal ablation and PC-topics
+diagnostic live in `evaluations/embedding_clustering`.)
+
+**1. Decompose captions into the 12-field schema** (text-only, no video/labels).
+gpt-oss-20b via the NVIDIA inference API; set `NV_INFERENCE_API_KEYS`
+(comma-separated pool) or `NV_INFERENCE_API_KEY`:
+
+```bash
+python evaluations/embedding_quality/facet_segment.py \
+  --captions captions.parquet \      # clip_id + summary/caption column
+  --out ./facets/facets.jsonl --workers-per-key 12
+```
+
+**2. Build the facet encoders** (embeds facet texts with Qwen3-Embedding-8B;
+needs a CUDA GPU):
+
+```bash
+python evaluations/embedding_quality/caption_faceting.py \
+  --facets ./facets/facets.jsonl --out-dir ./embeddings
+# writes caption_facet_{scene,road_entities,action,temporal}.npz
+```
+
+**3. Score them** alongside the monolithic caption (same runner, same labels;
+add `caption_pc5` too once built, see embedding_clustering):
+
+```bash
+python evaluations/embedding_quality/run_embedding_quality.py \
+  --embeddings-dir ./embeddings --output-dir ./out \
+  --embeddings caption caption_facet_scene caption_facet_road_entities \
+      caption_facet_action caption_facet_temporal
+```
+
 ## Tests
 
 ```bash
