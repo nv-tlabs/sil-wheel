@@ -160,7 +160,7 @@ gpt-oss-20b via the NVIDIA inference API; set `NV_INFERENCE_API_KEYS`
 (comma-separated pool) or `NV_INFERENCE_API_KEY`:
 
 ```bash
-python evaluations/embedding_quality/facet_segment.py \
+python evaluations/embedding_quality/caption_faceting.py segment \
   --captions captions.parquet \      # clip_id + summary/caption column
   --out ./facets/facets.jsonl --workers-per-key 12
 ```
@@ -169,7 +169,7 @@ python evaluations/embedding_quality/facet_segment.py \
 needs a CUDA GPU):
 
 ```bash
-python evaluations/embedding_quality/caption_faceting.py \
+python evaluations/embedding_quality/caption_faceting.py embed \
   --facets ./facets/facets.jsonl --out-dir ./embeddings
 # writes caption_facet_{scene,road_entities,action,temporal}.npz
 ```
