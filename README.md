@@ -131,6 +131,10 @@ hf_transfer_login # or: huggingface-cli login
 > [!WARNING]
 > It may not build cleanly with some CUDA and PyTorch combinations, including CUDA 13.0 and PyTorch 2.10.
 
+**Prefer containers?** You can build and run SIL-Wheel from Docker instead of the
+conda environment. See [`docker/`](docker/README.md) for the data preparation and
+server images.
+
 ## Quickstart
 
 The quickest way to try SIL-Wheel is to run one of the example walkthroughs.
