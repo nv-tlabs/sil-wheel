@@ -34,9 +34,6 @@ limitations under the License.
     <link rel="stylesheet" href="arena.css">
     <script src="/main.js"></script>
     <script src="/arena.js"></script>
-    <link rel="stylesheet" href="/docs_chatbot.css">
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
-    <script defer src="/docs_chatbot.js"></script>
 </head>
 <body>
     <div class="top-navbar">
@@ -50,11 +47,15 @@ limitations under the License.
         </div>
     </div>
     <div id="main-row">
-        <div class="sidebar">
-            <h2 class="sidebar-heading">ARENAS <button class="help-icon" onclick="showArenaHelp()">i</button></h2>
+        <div class="sidebar" id="arena-sidebar">
+            <div class="arena-sidebar-header">
+                <h2 class="sidebar-heading">ARENAS <button class="help-icon" onclick="showArenaHelp()">i</button></h2>
+                <button class="arena-sidebar-toggle" id="arena-sidebar-collapse" onclick="toggleArenaSidebar()" title="Collapse sidebar">&lsaquo;</button>
+            </div>
             <input type="text" id="arena-search" class="arena-search-input" placeholder="Filter arenas..." />
             <div id="arena-list"></div>
         </div>
+        <button class="arena-sidebar-expand" id="arena-sidebar-expand" onclick="toggleArenaSidebar()" title="Show arenas" style="display:none;">&rsaquo;</button>
 
         <div class="main-content">
             <!-- No arena selected -->
@@ -71,58 +72,173 @@ limitations under the License.
                 <div class="arena-actions">
                     <button class="nav-button arena-start-btn" onclick="startEvaluating()">▶ Start Evaluating</button>
                     <span id="arena-total-matches" class="arena-match-count"></span>
+                    <div id="arena-vlm-judge-controls" class="arena-vlm-judge-controls" style="display:none;">
+                        <span class="arena-actions-sep"></span>
+                        <button id="arena-vlm-judge-btn" class="nav-button arena-start-btn" title="Run automated VLM judge on this arena">🔁 VLM Judge</button>
+                        <label class="arena-vlm-count-label">
+                            <input type="number" id="arena-vlm-judge-count" class="arena-vlm-count-input" value="10" min="1" max="100" title="Number of matches (1-100)" />
+                            <span>matches</span>
+                        </label>
+                    </div>
                     <div id="arena-owner-controls" class="arena-owner-controls" style="display:none;">
                         <button id="arena-publish-btn" class="nav-button arena-owner-btn" title="Make this arena visible to all users (or hide it back to owners/admins only)">Publish</button>
                         <button id="arena-refresh-btn" class="nav-button arena-owner-btn" title="Re-fetch manifest.json from S3 to pick up changes to models, items, or instructions">Refresh Manifest</button>
                     </div>
                 </div>
-                <div id="arena-vlm-judge-controls" class="arena-vlm-judge-controls" style="display:none;">
-                    <button id="arena-vlm-judge-btn" class="nav-button arena-start-btn" title="Run automated VLM judge on this arena">🔁 VLM Judge</button>
-                    <label class="arena-vlm-count-label">
-                        <input type="number" id="arena-vlm-judge-count" class="arena-vlm-count-input" value="10" min="1" max="100" title="Number of matches (1-100)" />
-                        <span>matches</span>
-                    </label>
+                <!-- Tab bar -->
+                <div class="arena-tabs">
+                    <button class="arena-tab active" id="arena-tab-btn-leaderboard" onclick="switchArenaTab('leaderboard')">Leaderboard</button>
+                    <button class="arena-tab" id="arena-tab-btn-analytics" onclick="switchArenaTab('analytics')">Analytics</button>
                 </div>
-                <table id="arena-elo-table" class="display" style="width:100%;">
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>Model</th>
-                            <th>ELO (± 95% CI)</th>
-                            <th>Votes</th>
-                            <th>Wins</th>
-                            <th>Losses</th>
-                            <th>Ties</th>
-                            <th>Win %</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-                <div id="arena-elo-chart-section" style="margin-top:24px;">
-                    <h3>ELO Chart</h3>
-                    <canvas id="arena-elo-chart" height="80"></canvas>
-                </div>
-                <div id="arena-history-section" style="margin-top:24px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <h3 style="margin:0;">Recent Votes</h3>
-                        <button class="nav-button arena-export-btn" onclick="exportVotes()">⬇ Export CSV</button>
+
+                <!-- Leaderboard tab -->
+                <div id="arena-tab-leaderboard">
+                    <div id="arena-criteria-section" class="arena-criteria-section" style="display:none;">
+                        <h3>Criteria</h3>
+                        <div id="arena-criteria-chips" class="arena-criteria-chips"></div>
                     </div>
-                    <p style="margin:4px 0 8px; font-size:0.82em; color:var(--muted);">Click row to review</p>
-                    <table id="arena-history-table" class="display" style="width:100%;">
+                    <div id="arena-labels-section" class="arena-criteria-section" style="display:none;">
+                        <h3>Labels</h3>
+                        <div id="arena-label-chips" class="arena-criteria-chips"></div>
+                    </div>
+                    <table id="arena-elo-table" class="display" style="width:100%;">
                         <thead>
                             <tr>
-                                <th></th>
-                                <th>Time</th>
-                                <th>Input</th>
-                                <th>Model A</th>
-                                <th>Model B</th>
-                                <th>Winner</th>
-                                <th>User</th>
-                                <th>Match ID</th>
+                                <th>Rank</th>
+                                <th>Model</th>
+                                <th>Rating (± 95% CI)</th>
+                                <th>Votes</th>
+                                <th>Wins</th>
+                                <th>Losses</th>
+                                <th>Ties</th>
+                                <th>Win %</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
+                    <div id="arena-elo-chart-section" style="margin-top:24px;">
+                        <h3>Rating Chart</h3>
+                        <canvas id="arena-elo-chart" height="80"></canvas>
+                    </div>
+                    <div id="arena-history-section" style="margin-top:24px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h3 style="margin:0;">Recent Votes</h3>
+                            <button class="nav-button arena-export-btn" onclick="exportVotes()">⬇ Export JSON</button>
+                        </div>
+                        <p style="margin:4px 0 8px; font-size:0.82em; color:var(--muted);">Click row to review</p>
+                        <table id="arena-history-table" class="display" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Time</th>
+                                    <th>Input</th>
+                                    <th>Model A</th>
+                                    <th>Model B</th>
+                                    <th>Winner</th>
+                                    <th>User</th>
+                                    <th>Match ID</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Analytics tab -->
+                <div id="arena-tab-analytics" style="display:none;">
+                    <!-- Active filters banner — only visible when filters are active -->
+                    <div id="analytics-active-banner" class="arena-analytics-active-banner" style="display:none;">
+                        <span id="analytics-active-text"></span>
+                        <button class="arena-analytics-reset-link" onclick="resetAnalyticsFilters()">Clear all filters</button>
+                    </div>
+
+                    <!-- Filters panel — criterion and label filters (annotators are filtered via table checkboxes) -->
+                    <div id="analytics-filter-bar" class="arena-analytics-filter-bar" style="display:none;">
+                        <div class="arena-analytics-filter-group" id="analytics-criterion-group" style="display:none;">
+                            <div class="arena-analytics-filter-label">Criterion</div>
+                            <div id="analytics-criterion-chips" class="arena-analytics-chip-row"></div>
+                        </div>
+                        <div class="arena-analytics-filter-group" id="analytics-label-group" style="display:none;">
+                            <div class="arena-analytics-filter-label">Labels</div>
+                            <div id="analytics-label-chips" class="arena-analytics-chip-row"></div>
+                        </div>
+                        <div class="arena-analytics-filter-actions">
+                            <button class="nav-button" id="analytics-refresh-btn" onclick="loadAnalytics(true)">Refresh Data</button>
+                        </div>
+                    </div>
+
+                    <div id="analytics-summary" class="arena-analytics-section"></div>
+
+                    <div class="arena-analytics-help-box">
+                        <div class="arena-analytics-help-title">Metrics</div>
+                        <dl class="arena-analytics-help-dl">
+                            <dt>Alignment</dt>
+                            <dd>Replays ratings using only this entity's votes, then compares the model ranking to the filtered consensus (Kendall's &tau;). <strong>1</strong> = identical ranking, <strong>0</strong> = uncorrelated, <strong>&minus;1</strong> = reversed. Above 0.6 is strong agreement; below 0.2 is near-random. Values shift when you exclude annotators or data points because the consensus changes.</dd>
+                            <dt>Influence</dt>
+                            <dd>Removes the entity, replays Glicko-2, measures total rating shift divided by vote count. Naturally uncertainty-weighted: shifts are large when the entity's votes hit models with wide RDs and shrink as models settle. Compare within an arena, not across.</dd>
+                            <dt>Rank Shifts</dt>
+                            <dd>How many models change leaderboard position when this entity is removed. Ranges from 0 to N (number of models). 0 = no effect on ordering.</dd>
+                            <dt>Consensus &Delta; <span class="arena-analytics-context">(data only)</span></dt>
+                            <dd>Change in average annotator alignment when this data point is removed. <strong>+</strong> = removing it improves consensus (noisy/controversial). <strong>&minus;</strong> = removing it hurts consensus (stabilizing). Values near 0 have little effect.</dd>
+                            <dt>Pairwise Alignment</dt>
+                            <dd>Kendall's &tau; between each pair of annotators' solo rating rankings (&minus;1 to 1). Green = agree on model ordering, red = disagree.</dd>
+                            <dt>Time to first vote</dt>
+                            <dd>Wall-clock seconds from when the match becomes votable to when the annotator submits their first verdict on it (vote or skip on any criterion). Captures how long the annotator spent perceiving the scene before committing to anything. Time while the browser tab is in the background (minimized, on a different tab) is subtracted; a single vote taking longer than 10 minutes is recorded as N/A on the assumption the annotator stepped away.</dd>
+                            <dt>Time per match</dt>
+                            <dd>Total wall-clock seconds an annotator spent on a match, summed across every criterion (votes and skips). Same background-tab subtraction and 10-minute-per-criterion outlier rule apply.</dd>
+                        </dl>
+                    </div>
+
+                    <div class="arena-analytics-section">
+                        <h3>Annotators</h3>
+                        <p class="arena-analytics-subtitle">How consistent is each annotator with the group? Uncheck to exclude from rating computation.</p>
+                        <div class="arena-annotator-row">
+                            <div class="arena-annotator-table-wrap">
+                                <table id="analytics-annotator-table" class="display" style="width:100%;"><thead><tr>
+                                    <th><input type="checkbox" id="analytics-annotator-select-all" checked title="Select / deselect all" /></th>
+                                    <th>Username</th>
+                                    <th>Votes</th>
+                                    <th title="Does this annotator rank models the same way as everyone else combined? (Kendall's τ, −1 to 1)">Alignment</th>
+                                    <th title="How much does each vote from this annotator shift the leaderboard? (avg rating change per vote)">Influence</th>
+                                    <th title="How many models change position if this annotator is removed?">Rank Shifts</th>
+                                    <th title="Median time the annotator spent before submitting the first criterion vote on a match. Captures perception/orientation time.">Time to first vote</th>
+                                    <th title="Median total wall-clock time the annotator spent per match (sum of all per-criterion durations).">Time per match</th>
+                                </tr></thead><tbody></tbody></table>
+                            </div>
+                            <div id="analytics-agreement-matrix"></div>
+                        </div>
+                    </div>
+
+                    <div class="arena-analytics-section">
+                        <h3>Data</h3>
+                        <p class="arena-analytics-subtitle">Which data points are clear-cut and which are noisy? Uncheck to exclude. Click row for details.</p>
+                        <table id="analytics-item-table" class="display" style="width:100%;"><thead><tr>
+                            <th><input type="checkbox" id="analytics-item-select-all" checked title="Select / deselect all" /></th>
+                            <th>Data Point</th>
+                            <th>Votes</th>
+                            <th title="Does this data point produce the same model ranking as the full dataset? (Kendall's τ, −1 to 1)">Alignment</th>
+                            <th title="Does removing this data point make annotators agree more (+) or less (−)? Large positive = noisy data point.">Consensus &Delta;</th>
+                            <th title="How much does each vote on this data point shift the leaderboard? (avg rating change per vote)">Influence</th>
+                            <th title="How many models change position if this data point is removed?">Rank Shifts</th>
+                            <th></th><!-- hidden col: groups JSON, used for row-expand detail -->
+                            <th title="Median time annotators spent before their first criterion vote on this data point. Captures perception/orientation time.">Time to first vote</th>
+                            <th title="Median total time spent per match on this data point.">Time per match</th>
+                        </tr></thead><tbody></tbody></table>
+                    </div>
+
+                    <div class="arena-analytics-section">
+                        <h3>Filtered Leaderboard</h3>
+                        <div id="analytics-filter-summary" class="arena-analytics-subtitle"></div>
+                        <table id="analytics-elo-table" class="display" style="width:100%;"><thead><tr>
+                            <th>Rank</th><th>Model</th><th>Rating</th><th title="Change in rating vs unfiltered">&Delta; Rating</th><th title="Change in rank position vs unfiltered (e.g. +2 = moved up 2 spots)">&Delta; Rank</th><th>Votes</th><th>Wins</th><th>Losses</th><th>Ties</th><th>Win %</th>
+                        </tr></thead><tbody></tbody></table>
+                    </div>
+
+                    <div class="arena-analytics-section">
+                        <h3>Filtered Rating Over Time</h3>
+                        <canvas id="analytics-elo-chart" height="80"></canvas>
+                    </div>
                 </div>
             </div>
 
@@ -132,7 +248,6 @@ limitations under the License.
                     <button class="nav-button" onclick="showLeaderboardView()">← Back to Leaderboard</button>
                     <span id="arena-match-counter" class="arena-match-count"></span>
                 </div>
-                <div id="arena-instructions" class="arena-instructions"></div>
                 <div class="arena-section-label">Context</div>
                 <div id="arena-inputs"></div>
                 <hr class="arena-divider">
@@ -147,22 +262,22 @@ limitations under the License.
                         <div class="arena-output-content" id="arena-content-b"></div>
                     </div>
                 </div>
-                <div class="arena-vote-row" id="arena-vote-row">
-                    <button class="arena-vote-btn pick-a-strong" onclick="submitVote('a_strong')">A is much better <kbd>1</kbd></button>
-                    <button class="arena-vote-btn pick-a" onclick="submitVote('a')">A is better <kbd>2</kbd></button>
-                    <button class="arena-vote-btn tie" onclick="submitVote('tie')">Tie <kbd>3</kbd></button>
-                    <button class="arena-vote-btn pick-b" onclick="submitVote('b')">B is better <kbd>4</kbd></button>
-                    <button class="arena-vote-btn pick-b-strong" onclick="submitVote('b_strong')">B is much better <kbd>5</kbd></button>
+                <div id="arena-video-controls" class="arena-video-controls" style="display:none;">
+                    <span class="arena-vc-label">Video Playback</span>
+                    <button class="arena-vc-btn" onclick="stepFrame(-1)" title="Back one frame">&minus;1f</button>
+                    <button class="arena-vc-btn" id="arena-vc-playpause" onclick="togglePlayPause()" title="Play / Pause">&#9654;</button>
+                    <button class="arena-vc-btn" onclick="stepFrame(1)" title="Forward one frame">+1f</button>
+                    <span class="arena-vc-sep"></span>
+                    <button class="arena-vc-speed" onclick="setSpeed(0.25)">0.25x</button>
+                    <button class="arena-vc-speed" onclick="setSpeed(0.5)">0.5x</button>
+                    <button class="arena-vc-speed" onclick="setSpeed(1)">1x</button>
+                    <button class="arena-vc-speed" onclick="setSpeed(2)">2x</button>
                 </div>
-                <div class="arena-skip-row" id="arena-skip-row">
-                    <button class="arena-skip-btn both-bad" onclick="submitVote('both_bad')">Both are bad <kbd>0</kbd></button>
-                    <button class="arena-skip-btn" onclick="skipMatch()">Skip <kbd>S</kbd></button>
+                <div id="arena-criterion-progress" class="arena-criterion-progress" style="display:none;">
+                    <span id="arena-criterion-label" class="arena-criterion-label"></span>
+                    <div id="arena-criterion-dots" class="arena-criterion-dots"></div>
                 </div>
-                <div class="arena-reasoning-row" id="arena-reasoning-row">
-                    <label class="arena-reasoning-label" for="arena-reasoning">Reasoning <span class="arena-reasoning-optional">(optional)</span></label>
-                    <span id="arena-reasoning-badge" class="arena-vlm-badge" style="display:none;">VLM Judge</span>
-                    <textarea id="arena-reasoning" class="arena-reasoning-input" rows="2" placeholder="Why did you pick this one?"></textarea>
-                </div>
+                <div id="arena-criterion-panels"></div>
                 <div class="arena-reveal" id="arena-reveal" style="display:none;">
                     <div class="arena-reveal-row">
                         <div class="arena-reveal-model">
@@ -182,6 +297,11 @@ limitations under the License.
         </div>
     </div>
 
+    <!-- Image lightbox (shared, one instance) -->
+    <dialog id="arena-lightbox" class="arena-lightbox" onclick="if(event.target===this)this.close()">
+        <img id="arena-lightbox-img" src="" alt="" />
+    </dialog>
+
     <footer>
         <p>Developed and maintained by the <a href="https://research.nvidia.com/labs/toronto-ai/" style="color: #76B900;"> NVIDIA Spatial Intelligence Lab.</a></p>
     </footer>
@@ -189,7 +309,7 @@ limitations under the License.
     <div id="arena-help-content" class="help-box">
         <span class="clear-annotation-button" onclick="hideArenaHelp()">&times;</span>
         <h3>Arenas</h3>
-        <p>Each arena is a blind A/B evaluation between two models on the same input. You vote on which output is better without knowing which model produced it. Votes update ELO ratings.</p>
+        <p>Each arena is a blind A/B evaluation between two models on the same input. You vote on which output is better without knowing which model produced it. Votes update per-model Glicko-2 ratings.</p>
         <p><b>Publish / Unpublish:</b> Unpublished arenas are only visible to owners and admins. Publish to make an arena visible to all users.</p>
         <p><b>Refresh Manifest:</b> Re-fetches the arena's manifest from S3. Use this after updating models, items, or instructions on S3 without restarting the server.</p>
         <p><b>Creating a new arena:</b> Upload a <code>manifest.json</code> and asset files to S3 under <code>arenas/{name}/assets/{item_id}/</code>. The server auto-discovers it within 60 seconds.</p>

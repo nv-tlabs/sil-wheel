@@ -18,6 +18,7 @@ VLM judge for the Wheel server.
 """
 
 import base64
+import io
 import json
 import logging
 import os
@@ -153,12 +154,12 @@ ARENA_PAIRWISE_SYSTEM = """\
 You are an expert evaluator performing blind A/B comparison. You will be \
 shown an input context and two model outputs (A and B). Your task is to \
 judge which output is better according to the provided evaluation \
-instructions. Be objective, precise, and justify your choice with specific \
+criteria. Be objective, precise, and justify your choice with specific \
 observations."""
 
 ARENA_PAIRWISE_TEMPLATE = """\
-## Evaluation Instructions:
-{instructions}
+## Evaluation Criteria:
+{criteria_description}
 
 ## Input Context:
 {inputs_description}
@@ -170,13 +171,18 @@ ARENA_PAIRWISE_TEMPLATE = """\
 {output_b_description}
 
 ## Task:
-Compare the two outputs above according to the evaluation instructions.
-Pick the better output. Output your answer as a single JSON block:
+Compare the two outputs above on EACH criterion listed. For every criterion, \
+pick the better output and explain why. Output your answer as a single JSON block:
 
 {{
-  "reasoning": "<2-4 sentences comparing the two outputs>",
-  "winner": "a" or "b" or "tie",
-  "confidence": "strong" or "moderate" or "weak"
+  "criteria": [
+    {{
+      "name": "<criterion name, exactly as listed above>",
+      "reasoning": "<2-4 sentences comparing the two outputs on this criterion>",
+      "winner": "a" or "b" or "tie",
+      "confidence": "strong" or "moderate" or "weak"
+    }}
+  ]
 }}
 
 - "a" means Output A is better
@@ -185,7 +191,7 @@ Pick the better output. Output your answer as a single JSON block:
 - confidence "strong" maps to a decisive preference, "moderate" to a slight \
 preference, "weak" means nearly indistinguishable
 
-Output ONLY the JSON block. Nothing else."""
+You MUST include one entry per criterion. Output ONLY the JSON block. Nothing else."""
 
 
 def build_video_query_match_prompt(query: str) -> tuple[str, str]:
@@ -336,16 +342,18 @@ def judge_caption_score(vlm: BaseVLMClient, frames: List[np.ndarray], caption: s
 
 def judge_arena_pairwise(
     vlm: BaseVLMClient,
-    instructions: str,
+    criteria: List[Dict],
     inputs: List[Dict],
     outputs_a: List[Dict],
     outputs_b: List[Dict],
-) -> Dict[str, Any]:
+) -> List[Dict[str, Any]]:
     """Judge a pairwise arena match. Entries have {name, type, label, content|frames}.
 
     Video/image entries should have 'frames' (list of np.ndarray).
     Text/json entries should have 'content' (str).
-    Returns {winner, reasoning, confidence, prompt_tokens, response_tokens}.
+
+    *criteria* is a list of ``{"name": ..., "description": ...}`` dicts.
+    Always returns a list of ``{criterion, vote, reasoning}`` dicts (one per criterion).
     """
     # Collect all frames with section labels for the visual message
     all_frames = []
@@ -380,8 +388,12 @@ def judge_arena_pairwise(
         visual_note = "Visual content is provided as images in order:\n" + "\n".join(frame_labels)
         inputs_desc = visual_note + "\n\n" + inputs_desc
 
+    # Build prompt
+    criteria_desc = "\n".join(
+        f"- **{c['name']}**: {c.get('description') or 'Judge which output is better overall.'}" for c in criteria
+    )
     user_prompt = ARENA_PAIRWISE_TEMPLATE.format(
-        instructions=instructions or "Judge which output is better overall.",
+        criteria_description=criteria_desc,
         inputs_description=inputs_desc,
         output_a_description=output_a_desc,
         output_b_description=output_b_desc,
@@ -406,14 +418,26 @@ def judge_arena_pairwise(
         ("b", "strong"): "b_strong", ("b", "moderate"): "b", ("b", "weak"): "tie",
         ("tie", "strong"): "tie", ("tie", "moderate"): "tie", ("tie", "weak"): "tie",
     }
-    winner_raw = str(parsed.get("winner", "tie")).lower().strip()
-    confidence_raw = str(parsed.get("confidence", "moderate")).lower().strip()
-    vote = vote_map.get((winner_raw, confidence_raw), "tie")
 
-    parsed["vote"] = vote
-    parsed["prompt_tokens"] = resp["prompt_tokens"]
-    parsed["response_tokens"] = resp["response_tokens"]
-    return parsed
+    def _to_vote(entry):
+        w = str(entry.get("winner", "tie")).lower().strip()
+        c = str(entry.get("confidence", "moderate")).lower().strip()
+        return vote_map.get((w, c), "tie")
+
+    # Parse into list of {criterion, vote, reasoning}
+    results = []
+    for c_entry in parsed.get("criteria", []):
+        results.append({
+            "criterion": c_entry.get("name", ""),
+            "vote": _to_vote(c_entry),
+            "reasoning": c_entry.get("reasoning", ""),
+        })
+    # If VLM missed some criteria, fill with tie
+    returned_names = {r["criterion"] for r in results}
+    for c in criteria:
+        if c["name"] not in returned_names:
+            results.append({"criterion": c["name"], "vote": "tie", "reasoning": "(no response from judge)"})
+    return results
 
 
 class VLMJudge:
@@ -437,7 +461,7 @@ class VLMJudge:
         self.datastore = datastore
         self.video_fetcher = video_fetcher
         # Build the VLM client via the factory so callers can pick between
-        # openai / local_server / local without code changes.
+        # nv_inference / openai / local_server / local without code changes.
         client_kwargs = {
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -527,12 +551,12 @@ class VLMJudge:
         model_b: str,
         max_frames_per_video: int = 64,
         max_total_frames: int = 256,
-    ) -> Dict[str, Any]:
+    ) -> List[Dict[str, Any]]:
         """Judge a pairwise arena match using the VLM.
 
         Fetches assets from S3 via arena_store, extracts frames from
         video/image assets, and runs pairwise comparison.
-        Returns {vote, reasoning, confidence, ...}.
+        Returns list of {criterion, vote, reasoning} dicts.
         """
         assets = arena_store.load_match_assets(
             arena_name, manifest, item_id, model_a, model_b
@@ -576,11 +600,7 @@ class VLMJudge:
         outputs_a = _prepare_entries(assets["outputs_a"])
         outputs_b = _prepare_entries(assets["outputs_b"])
 
-        result = judge_arena_pairwise(
-            self.vlm, assets["instructions"], inputs, outputs_a, outputs_b
+        return judge_arena_pairwise(
+            self.vlm, assets["criteria"], inputs, outputs_a, outputs_b
         )
-        result["item_id"] = item_id
-        result["model_a"] = model_a
-        result["model_b"] = model_b
-        return result
 

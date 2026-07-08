@@ -256,7 +256,7 @@ For quick in-repo references:
 | Topic | Reference |
 | :--- | :--- |
 | Data preparation: video processing, embeddings, metadata, and S3 upload | [`docs/data-preparation.md`](docs/data-preparation.md) |
-| Arena: blind model evaluation, manifest format, and ELO ratings | [`docs/arena.md`](docs/arena.md) |
+| Arena: blind model evaluation, manifest format, and Glicko-2 ratings | [`docs/arena.md`](docs/arena.md) |
 | Bug reporting: the Google Sheets backed form | [`docs/bug-reporting.md`](docs/bug-reporting.md) |
 
 ## Citation
