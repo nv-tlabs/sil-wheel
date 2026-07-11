@@ -439,7 +439,7 @@ def main():
         ),
     )
 
-    parser.add_argument("--max_regions_per_frame", type=int, default=16)
+    parser.add_argument("--max_regions_per_frame", type=int, default=8)
     parser.add_argument("--min_region_size", type=int, default=32)
     parser.add_argument("--max_detections_per_label", type=int, default=4)
     parser.add_argument("--max_detections_per_clip", type=int, default=100)
