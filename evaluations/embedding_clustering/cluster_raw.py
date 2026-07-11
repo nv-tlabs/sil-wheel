@@ -28,9 +28,10 @@ Two modes:
   run dir (cluster_assignments / centroids / umap.json / cluster_topics.json /
   metadata) byte-identical in shape to the served-index path, consumed unchanged
   by the figure scripts.
-* ``--hierarchical`` -- recursive k-means taxonomy via
-  ``sil_wheel.cluster_hierarchy`` with topic extraction at every level; writes
-  ``hier_assignments.parquet`` + ``hier_topics.json``.
+* ``--hierarchical`` -- recursive k-means taxonomy with topic extraction at
+  every level; an iterative frontier of (path, depth, row-indices) nodes split
+  with ``faiss.Kmeans`` (indices-into-X scheme as in sklearn's
+  BisectingKMeans); writes ``hier_assignments.parquet`` + ``hier_topics.json``.
 
     # flat
     python cluster_raw.py --npz cosmos.npz --embed cosmos --k 1000 --spherical \
@@ -43,13 +44,20 @@ Two modes:
 
 import argparse
 import json
+import tempfile
 import time
 from pathlib import Path
 
+import faiss
 import numpy as np
+import pandas as pd
 
-from sil_wheel.cluster_build import build_clustering_run, generate_run_id
-from sil_wheel.cluster_hierarchy import build_hierarchical_clustering
+from sil_wheel.cluster_build import (
+    build_clustering_run,
+    generate_run_id,
+    write_cluster_assignments,
+)
+from sil_wheel.stores.cluster_topics import extract_topics_for_run, read_topics
 
 
 def _load(npz, pool, center, label):
@@ -105,6 +113,39 @@ def _run_flat(args, emb, clip_ids):
     return 0
 
 
+def _split_kmeans(X, k, spherical, seed):
+    """k-means one node's members with faiss; returns per-row labels."""
+    km = faiss.Kmeans(
+        X.shape[1],
+        k,
+        niter=25,
+        spherical=spherical,
+        seed=seed,
+        gpu=False,
+        max_points_per_centroid=256,
+        verbose=False,
+    )
+    km.train(X)
+    _, labels = km.index.search(X, 1)
+    return labels.ravel()
+
+
+def _node_topics(clip_ids, labels, k, args):
+    """Keywords/description per child cluster via a temp run dir."""
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp)
+        write_cluster_assignments(
+            run_dir, labels, np.zeros(len(labels), dtype=np.float32), list(clip_ids), k
+        )
+        extract_topics_for_run(
+            run_dir,
+            str(args.captions_db),
+            model_name=args.caption_model,
+            samples_per_cluster=50,
+        )
+        return read_topics(run_dir).get("topics", {})
+
+
 def _run_hier(args, emb, clip_ids):
     print(
         f"[hier] {emb.shape[0]:,} clips × {emb.shape[1]} "
@@ -112,26 +153,49 @@ def _run_hier(args, emb, clip_ids):
         flush=True,
     )
     t0 = time.perf_counter()
-    root = build_hierarchical_clustering(
-        emb,
-        clip_ids,
-        branching=args.branching,
-        max_depth=args.max_depth,
-        min_cluster_size=args.min_cluster_size,
-        captions_db_path=str(args.captions_db),
-        spherical=not args.no_spherical,
-        output_dir=args.out,
-    )
+    clip_ids = np.asarray(clip_ids, dtype=object)
+    k, spherical = args.branching, not args.no_spherical
+    topics = {}  # dotted path -> {keywords, description, size, depth}
+    leaves = []  # (path, depth, row indices into emb)
+    frontier = [("", 0, np.arange(len(clip_ids)))]
+    while frontier:
+        path, depth, idx = frontier.pop()
+        if depth >= args.max_depth or len(idx) < max(args.min_cluster_size, 2 * k):
+            leaves.append((path, depth, idx))
+            continue
+        labels = _split_kmeans(np.ascontiguousarray(emb[idx]), k, spherical, args.seed)
+        node_topics = _node_topics(clip_ids[idx], labels, k, args)
+        for cid in range(k):
+            child_idx = idx[labels == cid]
+            if len(child_idx) == 0:
+                continue
+            child_path = f"{path}.{cid}" if path else str(cid)
+            t = node_topics.get(str(cid), node_topics.get(cid, {}))
+            topics[child_path] = {
+                "keywords": list(t.get("keywords", [])),
+                "description": t.get("description", ""),
+                "size": int(len(child_idx)),
+                "depth": depth + 1,
+            }
+            frontier.append((child_path, depth + 1, child_idx))
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / "hier_topics.json").write_text(json.dumps(topics, indent=2))
+    sizes = [len(idx) for _, _, idx in leaves]
+    pd.DataFrame(
+        {
+            "clip_id": np.concatenate([clip_ids[idx] for _, _, idx in leaves]),
+            "path": np.repeat([p for p, _, _ in leaves], sizes),
+            "depth": np.repeat([d for _, d, _ in leaves], sizes),
+        }
+    ).to_parquet(args.out / "hier_assignments.parquet", index=False)
     print(
         f"[hier] taxonomy written to {args.out} ({time.perf_counter() - t0:.1f}s)",
         flush=True,
     )
-    print(f"[hier] level-1 topics ({len(root.children)} clusters):", flush=True)
-    for path, child in list(root.children.items())[:12]:
-        print(
-            f"  {path:>4}  n={child.size:>7}  {', '.join(child.keywords[:6])}",
-            flush=True,
-        )
+    level1 = [(p, t) for p, t in topics.items() if t["depth"] == 1]
+    print(f"[hier] level-1 topics ({len(level1)} clusters):", flush=True)
+    for p, t in level1[:12]:
+        print(f"  {p:>4}  n={t['size']:>7}  {', '.join(t['keywords'][:6])}", flush=True)
     return 0
 
 
