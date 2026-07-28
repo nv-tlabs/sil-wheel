@@ -35,7 +35,7 @@ Supports all 14 composable search modes + VLM Judge:
   - VLM Judge (caption scoring, search validation via vision-language model)
 
 Usage as library:
-    from src.wheel_client import WheelClient
+    from sil_wheel_agent import WheelClient
 
     client = WheelClient()  # loads credentials from .env
     client.login()

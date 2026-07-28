@@ -635,7 +635,7 @@ Key arguments
 - Positional `path_to_data`: text/JSON file listing absolute video paths (one per line).
 - `--model_family`: VLM family, one of `qwen2.5-vl` or `qwen3-vl` (default `qwen2.5-vl`).
 - `--model_size`: Model size in billions of parameters. Valid sizes depend on `--model_family`: `qwen2.5-vl` accepts `3`, `7`, `32`, `72`; `qwen3-vl` accepts `2`, `4`, `8`, `30`, `235`.
-- `--prompt_factory_type`: Caption prompt template, one of `yotta_prompt_long` (default), `video_caption_dense`, `reason_prompt`, `msrvtt_prompt`.
+- `--prompt_factory_type`: Caption prompt template, one of `yotta_prompt_long` (default), `video_caption_dense`, `reason_prompt`.
 - `--batch_size`: Batch size for model inference.
 - `--clip_duration`: Window size in seconds (e.g., 5 for 4 subclips in a 20s video).
 - `--clip_overlap`: Overlap in seconds between consecutive windows.

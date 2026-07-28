@@ -530,7 +530,7 @@ exclude all data the unauthenticated user can see — which is everything.
 For autonomous loops and agent code, **opt into the loud failure path**:
 
 ```python
-from src.wheel_client import WheelClient, WheelAuthenticationError
+from sil_wheel_agent.wheel_client import WheelClient, WheelAuthenticationError
 
 client = WheelClient()
 try:
