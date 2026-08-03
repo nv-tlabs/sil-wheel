@@ -26,7 +26,7 @@ and serving videos straight off the local filesystem.
 * ~15 GB free disk for v1.0-mini (4 GB nuScenes archive, ~5 GB extracted +
   encoded videos, embeddings + FAISS indexes).
 * Internet access for the nuScenes download and HuggingFace model downloads
-  on first use (Cosmos, Qwen2.5-VL, Qwen3-Embedding, Florence2, SigCLIP2).
+  on first use (Cosmos, Qwen3-VL, Qwen3-Embedding, Florence2, SigCLIP2).
 
 ## Setup
 
@@ -49,6 +49,14 @@ python scripts/launch_server.py wheel-data/config.yaml
 ```
 
 Open <http://127.0.0.1:8012/> and log in.
+
+> [!NOTE]
+> `127.0.0.1` only accepts connections from the machine running the server. When
+> setting this up on a remote host, point it at that host's address instead, by
+> passing `--host 10.0.0.5` to the setup above, by editing `server.bindto` in
+> `config.yaml`, or at launch time with
+> `--override server.bindto=10.0.0.5:8012`. The address in use is printed at
+> startup as `Listening at ...`.
 
 ### Login credentials
 
@@ -76,7 +84,6 @@ python examples/getting-started-nuscenes/setup_nuscenes.py --help
   --admin-user / --admin-password / --admin-email
   --n-encode-workers N      parallel ffmpeg jobs for raw video encoding
   --cosmos-index-spec SPEC  FAISS index spec for cosmos; default FLAT
-  --qwen-model-size {3,7,32,72}    Qwen2.5-VL size for captioning
   --gpu-memory-utilization F       vLLM GPU memory fraction
   --no-enforce-eager               let vLLM capture cudagraphs (faster, more VRAM)
   --max-model-len N                vLLM context window
@@ -114,7 +121,7 @@ setup_nuscenes.py
 ├── run_prepare_data                 scripts/prepare_data.py → processed_videos/
 ├── run_extract_cosmos               cosmos_embed1_448p → cosmos_embeddings/*.parquet
 │   └── materialize_cosmos_index     FAISS index files (Flat)
-├── run_extract_qwen_captions        Qwen2.5-VL-3B → captions/*.parquet
+├── run_extract_qwen_captions        Qwen3-VL-4B → captions/*.parquet
 │   └── load_captions_into_db        FTSCaptionStore.insert_from_dataframe
 ├── run_extract_caption_embeddings   Qwen3-Embedding-0.6B → caption_embeddings/*.parquet
 │   └── materialize_caption_embeddings_index   FAISS index files (Flat)
@@ -137,7 +144,7 @@ modality populated, alongside all the on-disk artifacts the server reads.
 
 | Modality | Source | SIL-Wheel store |
 | --- | --- | --- |
-| Caption full-text search | Qwen2.5-VL captions | `FTSCaptionStore` |
+| Caption full-text search | Qwen3-VL-4B captions | `FTSCaptionStore` |
 | Cosmos text→video / clip→clip | `cosmos_embed1_448p` | `CosmosEmbeddingsStore` |
 | Caption-embedding semantic search | `Qwen3-Embedding-0.6B` | `CaptionEmbeddingsStore` |
 | Visual text→region search | Florence2 + SigCLIP2 | `Florence2SigCLIPEmbeddingStore` |
@@ -199,7 +206,7 @@ directories to exist.
 * **vLLM OOM on a 24 GiB GPU.** Lower `--gpu-memory-utilization` (default
   0.7) or `--max-model-len` (default 32768). The default is already tuned
   to not OOM a 4090 alongside ~2 GB held by another process.
-* **HuggingFace download stalls.** First launch pulls Cosmos / Qwen2.5-VL /
+* **HuggingFace download stalls.** First launch pulls Cosmos / Qwen3-VL /
   Qwen3-Embedding / Florence2 / SigCLIP2 weights. Ensure `huggingface_hub`
   can reach the hub (proxy / token).
 * **"Address already in use".** Port 8012 is busy; pass `--port 18012` so

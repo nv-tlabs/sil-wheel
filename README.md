@@ -160,7 +160,10 @@ dataset, streamed from the Hugging Face Hub as `.zip` shards. Prepare it, then
 launch the server from the `config.yaml` the setup writes:
 
 ```bash
-python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py --max-clips 20
+python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py \
+    --workdir ./wheel-data-physical-ai \
+    --camera camera_front_wide_120fov \
+    --max-clips 500
 python scripts/launch_server.py wheel-data-physical-ai/config.yaml
 ```
 
@@ -177,6 +180,23 @@ python scripts/launch_server.py config/wheel_launch_dev_server_config.yaml
 
 Open the bind address printed at startup. This is the `server.bindto` value in
 the YAML configuration.
+
+> [!NOTE]
+> The examples bind to `127.0.0.1:8012`, which only accepts connections from the
+> machine running the server. To reach it from anywhere else, point `bindto` at
+> the address of the host you are launching from, in any of these ways:
+>
+> ```bash
+> # at data preparation time, baked into config.yaml
+> python examples/.../setup_physical_ai.py --host 10.0.0.5
+>
+> # at launch time, without touching config.yaml
+> python scripts/launch_server.py wheel-data-physical-ai/config.yaml \
+>     --override server.bindto=10.0.0.5:8012
+> ```
+>
+> Or edit `server.bindto` in `config.yaml` directly. The address in use is
+> printed at startup as `Listening at ...`.
 
 ## Python API
 
@@ -197,17 +217,19 @@ from sil_wheel.client import WheelClient
 
 client = WheelClient.from_config("config/wheel_launch_dev_server_config.yaml")
 
-# Single-modality search via a convenience helper.
-result = client.search_caption("hard braking at intersection")
+# Single-modality search via a convenience helper. Caption search is keyword
+# based, so a bare multi-word query matches that exact phrase; use single terms
+# or explicit AND/OR/NOT to combine them.
+result = client.search_caption("intersection")
 print(len(result), "clips matched")
 # first 10 clip_ids
 print(result.head(10))
 
 # Compose multiple modalities and filters in one query, fused with RRF.
 result = client.search(
-    # caption FTS
-    search="hard braking at intersection",
-    # text->video embedding
+    # caption FTS: keyword/phrase matching against the caption text
+    search="intersection AND pedestrian",
+    # text->video embedding: free-form description, no keyword overlap needed
     semantic_search_text="hard braking at intersection",
     data_source=["nuscenes"],
     rank_mode="rrf",
@@ -233,12 +255,12 @@ client = WheelHTTPClient(
     password="...",
 )
 
-result = client.search_caption("hard braking at intersection")
+result = client.search_caption("intersection")
 print(result.clip_ids[:10])
 
 # Or copy a URL straight out of the UI's address bar:
 result = client.search_from_url(
-    "http://wheel-host:8012/?search=hard+braking&data_source=nuscenes"
+    "http://wheel-host:8012/?search=intersection&data_source=nuscenes"
 )
 ```
 

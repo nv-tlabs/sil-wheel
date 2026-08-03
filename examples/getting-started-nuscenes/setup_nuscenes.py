@@ -376,7 +376,6 @@ def run_extract_qwen_captions(
     processed_paths: list[Path],
     captions_dir: Path,
     video_list_path: Path,
-    model_size: int = 3,
     clip_duration: float = 20.0,
     gpu_memory_utilization: float = 0.7,
     enforce_eager: bool = True,
@@ -416,7 +415,6 @@ def run_extract_qwen_captions(
 def load_captions_into_db(
     captions_db: Path,
     captions_parquet: Path,
-    model_size: int = 3,
     scene_duration_s: float = 20.0,
 ) -> None:
     """Insert qwen-captions parquet rows into FTSCaptionStore.
@@ -912,10 +910,6 @@ def main():
              "switch to OPQ/IVF/PQ at full-corpus scale.",
     )
     parser.add_argument(
-        "--qwen-model-size", default=4, type=int,
-        help="Unused: captioning is hardcoded to Qwen3-VL-4B.",
-    )
-    parser.add_argument(
         "--gpu-memory-utilization", default=0.7, type=float,
         help="vLLM GPU memory fraction for the captioning model.",
     )
@@ -1019,12 +1013,11 @@ def main():
         captions_parquet = run_extract_qwen_captions(
             sorted_processed, captions_dir,
             workdir / "video_paths_for_captions.txt",
-            model_size=args.qwen_model_size,
             gpu_memory_utilization=args.gpu_memory_utilization,
             enforce_eager=not args.no_enforce_eager,
             max_model_len=args.max_model_len,
         )
-        load_captions_into_db(captions_db, captions_parquet, model_size=args.qwen_model_size)
+        load_captions_into_db(captions_db, captions_parquet)
 
     if not args.skip_caption_embeddings and captions_parquet.exists():
         caption_embed_dir = workdir / "caption_embeddings"

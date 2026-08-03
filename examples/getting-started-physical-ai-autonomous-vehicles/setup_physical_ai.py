@@ -17,25 +17,28 @@
 it for the wheel server.
 
 The dataset (https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles)
-ships its videos as per-chunk .zip shards — one ~2 GiB zip per (camera, chunk),
+ships its videos as per-chunk .zip shards: one ~2 GiB zip per (camera, chunk),
 3146 chunks per camera, ~300k clips total. Processing all of it is impractical
-for a getting-started walkthrough, so this script lets you pick a single camera
-and a handful of chunks (--chunks) and, optionally, cap the number of clips that
-flow through the GPU stages (--max-clips).
+for a getting-started walkthrough, so this script processes a single camera and
+a slice of the clips. Say how big that slice is one of two ways, never both:
 
-It runs the same end-to-end pipeline as the nuScenes example, but drives the
-existing scripts/ against the HuggingFace zip shards instead of a local nuScenes
-split:
+  --chunks 0-3    process these chunks in full, whatever they hold
+  --max-clips 500 process exactly 500 clips, pulling as many chunks as that takes
+
+It runs the same end-to-end pipeline as the nuScenes example, just against the
+HuggingFace zip shards instead of a local nuScenes split:
 
   1. Download + compress the selected camera chunks with
      scripts/prepare_data.py --hf-repo-id ... (uses the new HuggingFaceZipDataset
      reader under the hood).
-  2. Extract Cosmos / Qwen captions / caption embeddings / Florence-2 +
+  2. Extract Cosmos / Qwen3-VL captions / caption embeddings / Florence-2 +
      SigCLIP2 visual embeddings via scripts/extract_*.py.
   3. Build per-clip ego trajectories from the egomotion.offline parquet files
      via scripts/extract_trajectory_stats.py (which auto-detects the physical_ai
      source from the .egomotion.offline.parquet filename).
-  4. Initialise the SQLite stores and write config.yaml.
+  4. Resolve each clip's collection country from metadata/data_collection.parquet
+     so the country and driving-side filters work.
+  5. Initialise the SQLite stores and write config.yaml.
 
 Launch the wheel server with:
 
@@ -45,6 +48,7 @@ Launch the wheel server with:
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import logging
 import shutil
@@ -58,9 +62,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pycountry
 import torch
 import yaml
-from huggingface_hub import snapshot_download
+from huggingface_hub import hf_hub_download, snapshot_download
 from safetensors.numpy import safe_open
 
 from sil_wheel.stores.caption_embeddings_store import CaptionEmbeddingsStore
@@ -87,6 +92,20 @@ WHEEL_SCRIPTS = EXAMPLE_DIR.parent.parent / "scripts"
 
 REPO_ID = "nvidia/PhysicalAI-Autonomous-Vehicles"
 DATA_SOURCE_NAME = "PhysicalAI-AV"
+
+# Per-clip collection metadata (country, month, hour_of_day, platform_class,
+# radar_config) for all ~306k clips, as a single ~11 MiB parquet indexed by
+# clip_id. This is where the dataset records geography; clip_index.parquet
+# carries only clip_is_valid / chunk / split.
+DATA_COLLECTION_PARQUET = "metadata/data_collection.parquet"
+
+# clip_id -> chunk / split / validity, for all ~306k clips. Used to find which
+# chunk a clip's egomotion lives in without assuming the video step downloaded
+# that chunk in this run.
+CLIP_INDEX_PARQUET = "clip_index.parquet"
+
+# Chunks the dataset ships per camera.
+N_CHUNKS = 3146
 
 # SigCLIP2 variant for the visual embeddings. One value drives both extraction
 # (the index) and the server's query-time encoder (written into config.yaml),
@@ -154,7 +173,7 @@ def run_prepare_data_hf(
     chunks: list[int],
     cache_dir: Path | None,
 ) -> None:
-    """Drive scripts/prepare_data.py against the HuggingFace zip shards.
+    """Run scripts/prepare_data.py against the HuggingFace zip shards.
 
     prepare_data.py downloads the matching camera chunk zips, extracts each
     <clip_id>.<camera>.mp4 member, and compresses it into processed_dir as
@@ -174,6 +193,77 @@ def run_prepare_data_hf(
     if cache_dir is not None:
         argv += ["--hf-cache-dir", str(cache_dir)]
     run_subprocess("prepare_data", argv)
+
+
+def run_prepare_data_for_clip_budget(
+    processed_dir: Path,
+    camera: str,
+    max_clips: int,
+    cache_dir: Path | None,
+) -> None:
+    """Download consecutive chunks until max_clips videos are on disk.
+
+    --max-clips names a clip budget rather than a chunk range, so keep pulling
+    chunk 0, 1, 2, ... until the budget is met. Videos left by an earlier run
+    count towards it, so re-running costs nothing once the budget is covered.
+    """
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    have = len(list(processed_dir.glob("*.mp4")))
+    barren = 0
+    for chunk in range(N_CHUNKS):
+        if have >= max_clips:
+            break
+        run_prepare_data_hf(processed_dir, camera, [chunk], cache_dir)
+        gained = len(list(processed_dir.glob("*.mp4"))) - have
+        have += gained
+        # Chunks already on disk legitimately yield nothing, so only give up
+        # after a run of them.
+        barren = barren + 1 if gained == 0 else 0
+        if barren >= 3:
+            log.warning(
+                "Chunks up to %d yielded no new clips; stopping at %d.", chunk, have,
+            )
+            break
+    if have < max_clips:
+        log.warning(
+            "Only %d clips available for camera %s; --max-clips %d not reached.",
+            have, camera, max_clips,
+        )
+
+
+def chunks_for_clips(clip_ids: list[str], cache_dir: Path | None) -> list[int]:
+    """Which dataset chunks the given clips live in.
+
+    The egomotion zips are sharded by the same chunk index as the camera zips,
+    so resolve it from clip_index.parquet instead of assuming it matches what
+    the video step just downloaded. Under --skip-prepare nothing is downloaded
+    at all, and under --max-clips the chunk range is chosen by the script.
+    """
+    try:
+        parquet_path = hf_hub_download(
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            filename=CLIP_INDEX_PARQUET,
+            cache_dir=str(cache_dir) if cache_dir else None,
+        )
+    except Exception as exc:  # offline, gated, or file removed upstream
+        log.warning(
+            "Could not fetch %s (%s); skipping trajectory inputs.",
+            CLIP_INDEX_PARQUET, exc,
+        )
+        return []
+
+    df = pd.read_parquet(parquet_path, columns=["chunk"])
+    selected = df.index.intersection(pd.Index(clip_ids))
+    chunks = sorted({int(c) for c in df.loc[selected, "chunk"]})
+    missing = len(clip_ids) - len(selected)
+    if missing:
+        log.warning(
+            "%d of %d clips are absent from %s.",
+            missing, len(clip_ids), CLIP_INDEX_PARQUET,
+        )
+    log.info("Selected clips span chunk(s) %s", chunks)
+    return chunks
 
 
 def select_processed_clips(processed_dir: Path, max_clips: int | None) -> list[str]:
@@ -231,7 +321,6 @@ def run_extract_qwen_captions(
     processed_paths: list[Path],
     captions_dir: Path,
     video_list_path: Path,
-    model_size: int = 3,
     clip_duration: float = CLIP_DURATION_S,
     gpu_memory_utilization: float = 0.7,
     enforce_eager: bool = True,
@@ -271,7 +360,6 @@ def run_extract_qwen_captions(
 def load_captions_into_db(
     captions_db: Path,
     captions_parquet: Path,
-    model_size: int = 3,
     scene_duration_s: float = CLIP_DURATION_S,
 ) -> None:
     """Insert qwen-captions parquet rows into FTSCaptionStore.
@@ -407,9 +495,9 @@ def download_egomotion(
 
     For each kept clip two files are written into egomotion_dir:
 
-    * <clip_id>.egomotion.offline.parquet — ego x/y/z at ~10 Hz, from
+    * <clip_id>.egomotion.offline.parquet: ego x/y/z at ~10 Hz, from
       labels/egomotion.offline/egomotion.offline.chunk_NNNN.zip.
-    * <clip_id>.timestamps.parquet — camera frame times at ~30 Hz, from the
+    * <clip_id>.timestamps.parquet: camera frame times at ~30 Hz, from the
       already-downloaded camera/<camera>/<camera>.chunk_NNNN.zip.
 
     extract_trajectory_stats.py resamples the ego trajectory onto those frame
@@ -554,11 +642,78 @@ def build_trajectory_memmap_and_index(traj_dir: Path, index_spec: str = "Flat") 
     return True
 
 
+def fetch_clip_countries(
+    clip_ids: list[str], cache_dir: Path | None
+) -> dict[str, str]:
+    """Map each selected clip to its ISO 3166-1 alpha-2 country code.
+
+    The dataset stores the collection country as a display name ("United
+    States", "Czechia") in metadata/data_collection.parquet, while wheel keys
+    its country filter, flag icons, and left-hand-driving toggle off two-letter
+    codes. Translate the names with pycountry, the same library the server uses
+    to render them back.
+
+    Clips absent from the table (or whose name has no ISO code) are simply
+    omitted; they end up with an empty country, which wheel treats as unknown.
+    """
+    try:
+        parquet_path = hf_hub_download(
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            filename=DATA_COLLECTION_PARQUET,
+            cache_dir=str(cache_dir) if cache_dir else None,
+        )
+    except Exception as exc:  # offline, gated, or file removed upstream
+        log.warning(
+            "Could not fetch %s (%s); leaving country blank, so the country "
+            "and driving-side filters will match nothing.",
+            DATA_COLLECTION_PARQUET, exc,
+        )
+        return {}
+
+    df = pd.read_parquet(parquet_path, columns=["country"])
+    selected = df.index.intersection(pd.Index(clip_ids))
+
+    name_to_code: dict[str, str] = {}
+    unresolved: set[str] = set()
+    countries: dict[str, str] = {}
+    for clip_id, name in df.loc[selected, "country"].items():
+        if not isinstance(name, str) or not name:
+            continue
+        if name not in name_to_code:
+            try:
+                name_to_code[name] = pycountry.countries.lookup(name).alpha_2
+            except LookupError:
+                name_to_code[name] = ""
+                unresolved.add(name)
+        if name_to_code[name]:
+            countries[clip_id] = name_to_code[name]
+
+    if unresolved:
+        log.warning(
+            "No ISO 3166-1 code for country name(s) %s; those clips stay blank.",
+            ", ".join(sorted(unresolved)),
+        )
+    missing = len(clip_ids) - len(countries)
+    if missing:
+        log.warning(
+            "%d of %d clips have no country in %s.",
+            missing, len(clip_ids), DATA_COLLECTION_PARQUET,
+        )
+    log.info(
+        "Resolved countries for %d/%d clips: %s",
+        len(countries), len(clip_ids),
+        dict(collections.Counter(countries.values()).most_common()),
+    )
+    return countries
+
+
 def init_annotations_db(
     db_path: Path,
     clip_ids: list[str],
     processed_paths: dict[str, Path],
     camera: str,
+    countries: dict[str, str],
 ) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
@@ -617,9 +772,10 @@ def init_annotations_db(
                     INSERT INTO clips (clip_id, data_source, country)
                     VALUES (?, ?, ?)
                     ON CONFLICT(clip_id) DO UPDATE SET
-                        data_source = excluded.data_source
+                        data_source = excluded.data_source,
+                        country = COALESCE(NULLIF(excluded.country, ''), country)
                     """,
-                    (cid, DATA_SOURCE_NAME, ""),
+                    (cid, DATA_SOURCE_NAME, countries.get(cid, "")),
                 )
                 conn.execute(
                     """
@@ -762,16 +918,21 @@ def main():
         "--camera", default=DEFAULT_CAMERA, choices=CAMERA_CHOICES,
         help="Which camera to host (one camera per run; default %(default)s).",
     )
-    parser.add_argument(
-        "--chunks", default="0", type=str,
-        help="Which dataset chunks to process. Comma-separated indices and/or "
-             "ranges, e.g. '0', '0,1,2' or '0-3,7'. Each camera chunk zip is "
-             "~2 GiB and holds ~96 clips. Default: 0.",
+    # Two ways to say how much data to process, and they are exclusive: pick
+    # the chunks yourself, or name a clip count and let the script pick.
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument(
+        "--chunks", default=None, type=str,
+        help="Process these dataset chunks in full. Comma-separated indices "
+             "and/or ranges, e.g. '0', '0,1,2' or '0-3,7'. Each camera chunk "
+             "zip is ~2 GiB and holds ~100 clips. Cannot be combined with "
+             "--max-clips. Default when neither is given: chunk 0.",
     )
-    parser.add_argument(
+    scope.add_argument(
         "--max-clips", default=None, type=int,
-        help="Cap the number of clips fed to the GPU stages / DB (handy for a "
-             "quick smoke test). The full chunk zip is still downloaded.",
+        help="Process exactly this many clips, downloading consecutive chunks "
+             "from 0 until the count is met (~2 GiB per chunk, ~100 clips "
+             "each). Cannot be combined with --chunks.",
     )
     parser.add_argument(
         "--hf-cache-dir", default=None, type=Path,
@@ -786,10 +947,6 @@ def main():
     parser.add_argument(
         "--cosmos-index-spec", default="FLAT",
         help="FAISS index spec for the Cosmos store. FLAT for small corpora.",
-    )
-    parser.add_argument(
-        "--qwen-model-size", default=4, type=int,
-        help="Unused: captioning is hardcoded to Qwen3-VL-4B.",
     )
     parser.add_argument(
         "--gpu-memory-utilization", default=0.7, type=float,
@@ -818,7 +975,8 @@ def main():
 
     workdir = args.workdir.resolve()
     workdir.mkdir(parents=True, exist_ok=True)
-    chunks = parse_chunks(args.chunks)
+    # argparse has already rejected --chunks together with --max-clips.
+    chunks = parse_chunks(args.chunks) if args.chunks is not None else [0]
 
     for binary in ("ffmpeg", "ffprobe"):
         if shutil.which(binary) is None:
@@ -842,14 +1000,18 @@ def main():
         )
         sys.exit(1)
 
-    log.info(
-        "Camera: %s | chunks: %s | max-clips: %s",
-        args.camera, chunks, args.max_clips,
-    )
+    if args.max_clips is not None:
+        log.info("Camera: %s | max-clips: %d", args.camera, args.max_clips)
+    else:
+        log.info("Camera: %s | chunks: %s", args.camera, chunks)
 
     processed_dir = workdir / "processed_videos"
     if args.skip_prepare and any(processed_dir.glob("*.mp4")):
         log.info("--skip-prepare set; reusing existing processed videos under %s", processed_dir)
+    elif args.max_clips is not None:
+        run_prepare_data_for_clip_budget(
+            processed_dir, args.camera, args.max_clips, args.hf_cache_dir,
+        )
     else:
         run_prepare_data_hf(processed_dir, args.camera, chunks, args.hf_cache_dir)
 
@@ -857,9 +1019,19 @@ def main():
     processed_paths = {cid: processed_dir / f"{cid}.mp4" for cid in clip_ids}
     sorted_processed = [processed_paths[c] for c in clip_ids]
     log.info("Selected %d clips for downstream processing.", len(clip_ids))
+    clip_chunks = chunks_for_clips(clip_ids, args.hf_cache_dir)
+    countries = fetch_clip_countries(clip_ids, args.hf_cache_dir)
     (workdir / "clip_manifest.json").write_text(
         json.dumps(
-            [{"clip_id": c, "camera": args.camera} for c in clip_ids], indent=2
+            [
+                {
+                    "clip_id": c,
+                    "camera": args.camera,
+                    "country": countries.get(c, ""),
+                }
+                for c in clip_ids
+            ],
+            indent=2,
         )
     )
 
@@ -875,12 +1047,11 @@ def main():
         captions_parquet = run_extract_qwen_captions(
             sorted_processed, captions_dir,
             workdir / "video_paths_for_captions.txt",
-            model_size=args.qwen_model_size,
             gpu_memory_utilization=args.gpu_memory_utilization,
             enforce_eager=not args.no_enforce_eager,
             max_model_len=args.max_model_len,
         )
-        load_captions_into_db(captions_db, captions_parquet, model_size=args.qwen_model_size)
+        load_captions_into_db(captions_db, captions_parquet)
 
     if not args.skip_caption_embeddings and captions_parquet.exists():
         caption_embed_dir = workdir / "caption_embeddings"
@@ -901,7 +1072,7 @@ def main():
     if not args.skip_trajectory:
         traj_dir = workdir / "trajectory_data"
         egomotion_paths = download_egomotion(
-            chunks, set(clip_ids), workdir / "egomotion", args.hf_cache_dir,
+            clip_chunks, set(clip_ids), workdir / "egomotion", args.hf_cache_dir,
             args.camera,
         )
         shard = run_extract_trajectories(
@@ -910,7 +1081,10 @@ def main():
         if shard is not None:
             trajectory_populated = build_trajectory_memmap_and_index(traj_dir)
 
-    init_annotations_db(workdir / "annotations.db", clip_ids, processed_paths, args.camera)
+    init_annotations_db(
+        workdir / "annotations.db", clip_ids, processed_paths, args.camera,
+        countries,
+    )
 
     password = args.admin_password
     if password is None:
@@ -940,8 +1114,17 @@ def main():
     print("Setup complete.")
     print()
     print(f"  Camera:        {args.camera}")
-    print(f"  Chunks:        {chunks}")
+    print(f"  Chunks:        {clip_chunks or 'unknown'}")
     print(f"  Clips:         {len(clip_ids)}")
+    country_counts = collections.Counter(countries.values()).most_common()
+    print(
+        "  Countries:     "
+        + (
+            ", ".join(f"{code} ({n})" for code, n in country_counts)
+            if country_counts
+            else "unknown"
+        )
+    )
     print(f"  Workdir:       {workdir}")
     print(f"  Config:        {config_path}")
     print(f"  Admin user:    {args.admin_user}")

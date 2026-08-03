@@ -51,21 +51,18 @@ the shared code make the existing scripts work with it:
   (`--hf-cache-dir` or `$HF_HOME`), plus a few hundred MB of processed videos,
   embeddings, and indexes per chunk. Budget ~5 GiB of free space per chunk.
 * Internet access for the dataset and HuggingFace model downloads on first use
-  (Cosmos, Qwen2.5-VL, Qwen3-Embedding, Florence2, SigCLIP2).
+  (Cosmos, Qwen3-VL, Qwen3-Embedding, Florence2, SigCLIP2).
 
 ## Setup
 
 Run from the SIL-Wheel repository root with the `wheel` conda env active:
 
 ```bash
-# 1. Run the pipeline on the first chunk of the front-wide camera.
-#    The chunk zip (~2 GiB) downloads once; --max-clips keeps the GPU stages
-#    quick for a first run. Drop --max-clips to process the whole chunk.
+# 1. Run the pipeline on 500 clips from the front-wide camera.
 python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_ai.py \
     --workdir ./wheel-data-physical-ai \
     --camera camera_front_wide_120fov \
-    --chunks 0 \
-    --max-clips 20 \
+    --max-clips 500 \
     --admin-password admin
 
 # 2. Launch the SIL-Wheel server.
@@ -73,6 +70,14 @@ python scripts/launch_server.py wheel-data-physical-ai/config.yaml
 ```
 
 Open <http://127.0.0.1:8012/> and log in.
+
+> [!NOTE]
+> `127.0.0.1` only accepts connections from the machine running the server. When
+> setting this up on a remote host, point it at that host's address instead, by
+> passing `--host 10.0.0.5` to the setup above, by editing `server.bindto` in
+> `config.yaml`, or at launch time with
+> `--override server.bindto=10.0.0.5:8012`. The address in use is printed at
+> startup as `Listening at ...`.
 
 ### Login credentials
 
@@ -89,23 +94,26 @@ it.
 
 ### Choosing how much data to process
 
+Say how much data you want in one of two ways. `--max-clips` and `--chunks` are
+mutually exclusive; passing both is an error.
+
 ```
+--max-clips N       Process exactly N clips. Consecutive chunks are downloaded
+                    from 0 until N clips are on disk, so N means N regardless
+                    of how many clips a chunk happens to hold.
+--chunks SPEC       Process these chunks in full, however many clips they hold.
+                    Comma-separated indices and/or ranges: "0", "0,1,2",
+                    "0-3,7". Use this when you want specific chunks rather than
+                    a clip count. Default when neither flag is given: chunk 0.
 --camera CAM        One of the seven cameras (default camera_front_wide_120fov).
                     One camera per run; the forward-wide camera is the closest
                     analogue to nuScenes' CAM_FRONT.
---chunks SPEC       Which chunks to process. Comma-separated indices and/or
-                    ranges: "0", "0,1,2", "0-3,7". Each camera chunk zip is
-                    ~2 GiB and holds ~100 clips. Default: 0.
---max-clips N       Cap the clips fed to the GPU stages / DB. The full chunk
-                    zip is still downloaded (zip members can't be fetched
-                    individually), but only N clips are captioned / embedded /
-                    indexed. Handy for a quick smoke test.
 --hf-cache-dir DIR  Where the raw chunk zips are cached (defaults to $HF_HOME).
 ```
 
-To scale up, increase `--chunks` (e.g. `--chunks 0-9`) and drop `--max-clips`.
-Chunk indices line up across features, so chunk *N* of the camera and chunk *N*
-of `egomotion.offline` describe the same clips.
+Either way the download granularity is a whole chunk, ~2 GiB holding ~100 clips,
+because zip members cannot be fetched individually. So `--max-clips 500` pulls
+five chunks and then processes 500 of the ~500 clips they contain.
 
 ### Useful flags
 
@@ -115,7 +123,6 @@ python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_a
   --host HOST --port PORT          bind address baked into config.yaml
   --admin-user / --admin-password / --admin-email
   --cosmos-index-spec SPEC         FAISS index spec for cosmos; default FLAT
-  --qwen-model-size {3,7,32,72}    Qwen2.5-VL size for captioning
   --gpu-memory-utilization F       vLLM GPU memory fraction
   --no-enforce-eager               let vLLM capture cudagraphs (faster, more VRAM)
   --max-model-len N                vLLM context window
@@ -135,7 +142,7 @@ setup_physical_ai.py
 │                                  (HuggingFaceZipDataset → processed_videos/)
 ├── run_extract_cosmos            cosmos_embed1_448p → cosmos_embeddings/*.parquet
 │   └── materialize_cosmos_index   FAISS index files (Flat)
-├── run_extract_qwen_captions      Qwen2.5-VL-3B → captions/*.parquet
+├── run_extract_qwen_captions      Qwen3-VL-4B → captions/*.parquet
 │   └── load_captions_into_db      FTSCaptionStore.insert_from_dataframe
 ├── run_extract_caption_embeddings Qwen3-Embedding-0.6B → caption_embeddings/*.parquet
 │   └── materialize_caption_embeddings_index   FAISS index files (Flat)
@@ -144,7 +151,8 @@ setup_physical_ai.py
 ├── download_egomotion             egomotion.offline + camera frame timestamps → egomotion/
 │   └── run_extract_trajectories   scripts/extract_trajectory_stats.py (resamples ego→frame times)
 │       └── build_trajectory_memmap_and_index  memmap + FAISS (full / 10s / 5s, Flat)
-├── init_annotations_db            clips, video_paths, datasets
+├── fetch_clip_countries           metadata/data_collection.parquet → ISO alpha-2 codes
+├── init_annotations_db            clips (incl. country), video_paths, datasets
 ├── init_users_db                  single admin user
 ├── write_required_stubs           wm_stats.parquet, clips_to_apis.json, predictions/
 └── write_config                   config.yaml the SIL-Wheel server reads
@@ -154,12 +162,13 @@ setup_physical_ai.py
 
 | Modality | Source | SIL-Wheel store |
 | --- | --- | --- |
-| Caption full-text search | Qwen2.5-VL captions | `FTSCaptionStore` |
+| Caption full-text search | Qwen3-VL-4B captions | `FTSCaptionStore` |
 | Cosmos text→video / clip→clip | `cosmos_embed1_448p` | `CosmosEmbeddingsStore` |
 | Caption-embedding semantic search | `Qwen3-Embedding-0.6B` | `CaptionEmbeddingsStore` |
 | Visual text→region search | Florence2 + SigCLIP2 | `Florence2SigCLIPEmbeddingStore` |
 | Trajectory pattern (`hard_braking`, `stop_go`, …) | `egomotion.offline` | `TrajectoryStore` |
 | Trajectory shape (clip→clip) | `egomotion.offline` | `TrajectoryStore` |
+| Country / driving-side filter | `metadata/data_collection.parquet` | `SQLiteDataStore` (`clips.country`) |
 | HTTP-range video streaming | local files | `LocalFileFetcher` |
 
 The script also creates a single admin user so you can log into the UI.
@@ -202,8 +211,6 @@ The raw ~2 GiB chunk zips live in your HuggingFace cache (`--hf-cache-dir` /
 * Arena evaluation mode.
 * Classifier and cluster search (`classifiers/` and `clustering/` remain empty;
   the search is lazy and just returns nothing).
-* Country / driving-side filters: the dataset's `clip_index` carries no
-  per-clip geography, so `country` is left blank rather than guessed.
 
 ## Troubleshooting
 
@@ -215,7 +222,8 @@ The raw ~2 GiB chunk zips live in your HuggingFace cache (`--hf-cache-dir` /
 * **`No CUDA GPU visible to PyTorch`.** Re-run with the relevant `--skip-*`
   flags or run on a GPU host.
 * **Out of disk.** Each chunk zip is ~2 GiB in the HF cache. Point
-  `--hf-cache-dir` at a roomy disk and process fewer `--chunks` at a time.
+  `--hf-cache-dir` at a roomy disk and lower `--max-clips` (or process fewer
+  `--chunks`) at a time.
 * **vLLM OOM on a 24 GiB GPU.** Lower `--gpu-memory-utilization` (default 0.7)
   or `--max-model-len` (default 32768).
 * **"Address already in use".** Port 8012 is busy; pass `--port 18012`.

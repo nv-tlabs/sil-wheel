@@ -25,7 +25,7 @@ Typical usage::
     from sil_wheel.client import WheelClient
 
     client = WheelClient.from_config("config/wheel_launch_dev_server_config.yaml")
-    result = client.search_caption("hard braking at intersection")
+    result = client.search_caption("intersection")
     df = result.as_dataframe()
 """
 from __future__ import annotations
@@ -237,7 +237,7 @@ class WheelClientBase:
         ``hash`` is the 16-hex content-addressed identifier returned by
         :meth:`upload_clip_list` (or the ``hash`` field of
         ``POST /upload_clip_list``). Combines cleanly with other filter
-        kwargs (e.g. ``search_clip_list(h, search="hard braking")``).
+        kwargs (e.g. ``search_clip_list(h, search="intersection")``).
         """
         return self.search(clip_id_list_hash=hash, **kwargs)
 

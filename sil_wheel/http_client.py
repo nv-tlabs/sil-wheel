@@ -29,7 +29,7 @@ Typical usage::
         username="alice",
         password="...",
     )
-    result = client.search_caption("hard braking at intersection")
+    result = client.search_caption("intersection")
 """
 from __future__ import annotations
 
