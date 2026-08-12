@@ -1035,9 +1035,11 @@ def main():
         )
         materialize_visual_embeddings_index(visual_dir)
 
-    trajectory_populated = False
+    # Seed from what is already on disk so that skipping the stage on a re-run
+    # reuses its artifacts rather than dropping them out of config.yaml.
+    traj_dir = workdir / "trajectory_data"
+    trajectory_populated = bool(list(traj_dir.glob("*.index")))
     if not args.skip_trajectory:
-        traj_dir = workdir / "trajectory_data"
         extract_nuscenes_trajectories(nusc, manifest, traj_dir)
         build_trajectory_memmap_and_index(traj_dir)
         trajectory_populated = True

@@ -24,7 +24,7 @@ window.modelsByLeaderboard = null; // { leaderboard: [models...] }
 function getSelectedModels(leaderboard) {
     const select = document.getElementById("models-select");
     let models = Array.from(select.selectedOptions).map(o => o.value);
-    let allModels = window.modelsByLeaderboard[leaderboard];
+    let allModels = window.modelsByLeaderboard?.[leaderboard] || [];
     models = models.filter(m => allModels.includes(m));
     if (models.length == 0 || models.length == allModels.length) {
         return null;
@@ -385,6 +385,10 @@ function renderLeaderboardFilters(leaderboard, selectedModels) {
     // Make a function to build the model selection based on a list of possible
     // models
     let buildModelSection = function (modelList) {
+        // A dataset with no model predictions leaves modelsByLeaderboard empty,
+        // so the leaderboard select has no options and lbSel.value is "", which
+        // looks up undefined. Render an empty model selector instead of throwing.
+        modelList = modelList || [];
         if ($(modelSel).data("select2")) {
             $(modelSel).select2("destroy");
         }
@@ -399,7 +403,7 @@ function renderLeaderboardFilters(leaderboard, selectedModels) {
         $(modelSel).val(modelList).trigger("change.select2");
         $(modelSel).off("change.enforceOne").on("change.enforceOne", function() {
             const vals = $(this).val() || [];
-            if (vals.length === 0) {
+            if (vals.length === 0 && modelList.length > 0) {
                 $(this).val([modelList[0]]).trigger("change.select2");
             }
         });
@@ -934,6 +938,9 @@ function showPage(pageNum, filters) {
     showLoading("Loading...");
     fetchTabData(tabInfo).then(() => {
         render();
+    }).catch((e) => {
+        console.error("Failed to load leaderboard", e);
+    }).finally(() => {
         hideLoading();
     });
 }
@@ -973,6 +980,11 @@ window.onhashchange = function () {
     let dataPromises = Object.values(window.currentTabs).map(fetchTabData);
     Promise.all(dataPromises).then(() => {
         render();
+    }).catch((e) => {
+        console.error("Failed to load leaderboard", e);
+    }).finally(() => {
+        // Always drop the overlay. Without this a throw anywhere above leaves
+        // the page showing "Loading..." forever with no indication of why.
         hideLoading();
     });
 };

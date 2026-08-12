@@ -62,6 +62,7 @@ def get_install_requirements():
         "librosa",
         "matplotlib",
         "moviepy",
+        "msgpack",
         "openai-clip",
         "Pillow",
         "packaging",

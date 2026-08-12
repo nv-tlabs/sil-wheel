@@ -51,6 +51,7 @@ import argparse
 import collections
 import json
 import logging
+import pickle
 import shutil
 import sqlite3
 import subprocess
@@ -708,6 +709,106 @@ def fetch_clip_countries(
     return countries
 
 
+def download_obstacles(
+    chunks: list[int],
+    clip_ids: set[str],
+    obstacle_dir: Path,
+    cache_dir: Path | None,
+) -> tuple[int, Path | None]:
+    """Fetch the 3D obstacle labels and ego dimensions the BEV viewer needs.
+
+    Returns the number of per-clip obstacle parquets extracted and the path to
+    the vehicle_dimensions parquet for the first chunk, which supplies the ego
+    footprint. The obstacle zips are ~64 MiB per chunk against ~2 GiB for the
+    matching camera zip, so this barely adds to the download.
+    """
+    obstacle_dir.mkdir(parents=True, exist_ok=True)
+    allow_patterns = (
+        [f"labels/obstacle.offline/obstacle.offline.chunk_{c:04d}.zip" for c in chunks]
+        + [
+            f"calibration/vehicle_dimensions/vehicle_dimensions.chunk_{c:04d}.parquet"
+            for c in chunks
+        ]
+    )
+    log.info("Downloading obstacle labels for %d chunk(s) from %s", len(chunks), REPO_ID)
+    try:
+        local_dir = snapshot_download(
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            allow_patterns=allow_patterns,
+            cache_dir=str(cache_dir) if cache_dir else None,
+            max_workers=8,
+        )
+    except Exception as exc:
+        log.warning("Could not download obstacle labels (%s); skipping BEV.", exc)
+        return 0, None
+
+    extracted = 0
+    for c in chunks:
+        zip_path = (
+            Path(local_dir)
+            / f"labels/obstacle.offline/obstacle.offline.chunk_{c:04d}.zip"
+        )
+        if not zip_path.exists():
+            log.warning("obstacle chunk zip missing: %s", zip_path)
+            continue
+        extracted += _extract_zip_members(
+            zip_path, ".obstacle.offline.parquet", clip_ids,
+            lambda cid: obstacle_dir / f"{cid}.obstacle.offline.parquet",
+        )
+
+    dims_path = None
+    for c in chunks:
+        candidate = (
+            Path(local_dir)
+            / f"calibration/vehicle_dimensions/vehicle_dimensions.chunk_{c:04d}.parquet"
+        )
+        if candidate.exists():
+            dims_path = candidate
+            break
+
+    log.info("Extracted %d obstacle parquet files to %s", extracted, obstacle_dir)
+    return extracted, dims_path
+
+
+def run_build_bev(
+    egomotion_dir: Path,
+    obstacle_dir: Path,
+    bev_dir: Path,
+    dims_path: Path | None,
+) -> bool:
+    """Turn the egomotion and obstacle labels into per-clip BEV msgpack files."""
+    argv = [
+        sys.executable,
+        str(WHEEL_SCRIPTS / "build_bev_data.py"),
+        str(egomotion_dir),
+        str(obstacle_dir),
+        str(bev_dir),
+    ]
+    if dims_path is not None:
+        argv += ["--vehicle-dimensions", str(dims_path)]
+    run_subprocess("build_bev", argv)
+    built = sorted(bev_dir.glob("*.msgpack"))
+    if not built:
+        log.warning("BEV build produced no output under %s", bev_dir)
+        return False
+    log.info("BEV data ready: %d clips under %s", len(built), bev_dir)
+    return True
+
+
+def write_bev_index(bev_dir: Path, index_dir: Path) -> None:
+    """Record which clips have BEV data so the "With BEV" filter works.
+
+    BEVFetcher reads clips_with_bev_set.pkl and, when present, exposes the
+    filter in the UI.
+    """
+    index_dir.mkdir(parents=True, exist_ok=True)
+    clip_ids = {p.stem for p in bev_dir.glob("*.msgpack")}
+    with (index_dir / "clips_with_bev_set.pkl").open("wb") as f:
+        pickle.dump(clip_ids, f)
+    log.info("Wrote BEV index for %d clips to %s", len(clip_ids), index_dir)
+
+
 def init_annotations_db(
     db_path: Path,
     clip_ids: list[str],
@@ -844,6 +945,7 @@ def write_config(
     cosmos_index_spec: str,
     caption_embed_model: str,
     trajectory_populated: bool,
+    bev_populated: bool,
 ) -> Path:
     trajectory_store = {"trajectory_dir": None}
     if trajectory_populated:
@@ -851,6 +953,15 @@ def write_config(
             "trajectory_dir": str((workdir / "trajectory_data").resolve()),
             "index_spec": "Flat",
         }
+
+    # s3_bucket stays as the disabled sentinel: an absolute BEV prefix makes
+    # BEVFetcher resolve clips to local paths, so S3 is never reached.
+    bev_store = {
+        "s3_bucket": "_local_disabled_",
+        "metrics_index_dir": str((workdir / "bev_index").resolve()),
+    }
+    if bev_populated:
+        bev_store["prefix"] = str((workdir / "bev_data").resolve())
 
     config = {
         "datastores": {
@@ -885,10 +996,7 @@ def write_config(
             "clip_list_search": {
                 "clip_lists_dir": str((workdir / "clip_lists").resolve()),
             },
-            "bev_store": {
-                "s3_bucket": "_local_disabled_",
-                "metrics_index_dir": str((workdir / "bev_index").resolve()),
-            },
+            "bev_store": bev_store,
         },
         "clips_to_sil_apis": str(stub_paths["clips_to_apis"].resolve()),
         "server": {
@@ -971,6 +1079,7 @@ def main():
     parser.add_argument("--skip-caption-embeddings", action="store_true")
     parser.add_argument("--skip-visual-embeddings", action="store_true")
     parser.add_argument("--skip-trajectory", action="store_true")
+    parser.add_argument("--skip-bev", action="store_true")
     args = parser.parse_args()
 
     workdir = args.workdir.resolve()
@@ -1068,9 +1177,11 @@ def main():
         )
         materialize_visual_embeddings_index(visual_dir)
 
-    trajectory_populated = False
+    # Seed from what is already on disk so that skipping a stage on a re-run
+    # reuses its artifacts rather than dropping them out of config.yaml.
+    traj_dir = workdir / "trajectory_data"
+    trajectory_populated = bool(list(traj_dir.glob("*.index")))
     if not args.skip_trajectory:
-        traj_dir = workdir / "trajectory_data"
         egomotion_paths = download_egomotion(
             clip_chunks, set(clip_ids), workdir / "egomotion", args.hf_cache_dir,
             args.camera,
@@ -1080,6 +1191,29 @@ def main():
         )
         if shard is not None:
             trajectory_populated = build_trajectory_memmap_and_index(traj_dir)
+
+    bev_dir = workdir / "bev_data"
+    bev_populated = bool(list(bev_dir.glob("*.msgpack")))
+    if not args.skip_bev:
+        # BEV reuses the egomotion parquets the trajectory step downloaded, so
+        # it needs them on disk even when --skip-trajectory was passed.
+        egomotion_dir = workdir / "egomotion"
+        if not any(egomotion_dir.glob("*.egomotion.offline.parquet")):
+            download_egomotion(
+                clip_chunks, set(clip_ids), egomotion_dir, args.hf_cache_dir,
+                args.camera,
+            )
+        n_obstacles, dims_path = download_obstacles(
+            clip_chunks, set(clip_ids), workdir / "obstacles", args.hf_cache_dir,
+        )
+        if n_obstacles:
+            bev_populated = run_build_bev(
+                egomotion_dir, workdir / "obstacles", bev_dir, dims_path,
+            )
+            if bev_populated:
+                write_bev_index(bev_dir, workdir / "bev_index")
+        else:
+            log.warning("No obstacle labels for the selected clips; skipping BEV.")
 
     init_annotations_db(
         workdir / "annotations.db", clip_ids, processed_paths, args.camera,
@@ -1107,6 +1241,7 @@ def main():
         cosmos_index_spec=args.cosmos_index_spec,
         caption_embed_model=args.caption_embed_model,
         trajectory_populated=trajectory_populated,
+        bev_populated=bev_populated,
     )
 
     print()

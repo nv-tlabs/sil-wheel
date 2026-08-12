@@ -13,20 +13,20 @@ dataset is ~300k clips across 3146 chunks per camera (each camera chunk zip is
 
 ## How this differs from the nuScenes example
 
-The Physical AI dataset is not a local download you extract once; it streams
-from HuggingFace as per-chunk `.zip` archives. Two small, reusable additions to
-the shared code make the existing scripts work with it:
+The dataset streams from HuggingFace as per-chunk `.zip` archives rather than
+being a local download you extract once. Four additions to the shared code make
+the existing scripts work with it:
 
-* **`sil_wheel/datasets/base_dataset.py` → `HuggingFaceZipDataset`**: a
-  zip-shard analogue of the existing tar-based `HuggingFaceTarDataset`.
-  `scripts/prepare_data.py` picks it automatically when a `--hf-repo-id`
-  ships `.zip` shards, so video download + compression needs **no** change to
-  `prepare_data.py` itself.
-* **`scripts/extract_trajectory_stats.py` → `physical_ai` source**: a new
-  trajectory source branch (auto-detected from the `.egomotion.offline.parquet`
-  filename) that reads the `timestamp` and `x/y/z` columns of the dataset's
-  `egomotion.offline` parquet, resamples them onto the camera frame timestamps,
-  and reuses the existing speed/acceleration/jerk/curvature math.
+* **`HuggingFaceZipDataset`** (`sil_wheel/datasets/base_dataset.py`): a zip-shard
+  analogue of `HuggingFaceTarDataset`, picked automatically by
+  `scripts/prepare_data.py` when a `--hf-repo-id` ships `.zip` shards.
+* **`physical_ai` trajectory source** (`scripts/extract_trajectory_stats.py`):
+  reads the `egomotion.offline` parquet and resamples it onto the camera frame
+  timestamps, reusing the existing speed/acceleration/jerk/curvature math.
+* **`scripts/build_bev_data.py`**: turns the obstacle and egomotion labels into
+  the per-clip msgpack the BEV viewer reads.
+* **`BEVFetcher` prefix** (`scripts/launch_server.py`): an absolute `bev_store`
+  prefix is served from local disk, a relative one from S3.
 
 ## Prerequisites
 
@@ -72,12 +72,9 @@ python scripts/launch_server.py wheel-data-physical-ai/config.yaml
 Open <http://127.0.0.1:8012/> and log in.
 
 > [!NOTE]
-> `127.0.0.1` only accepts connections from the machine running the server. When
-> setting this up on a remote host, point it at that host's address instead, by
-> passing `--host 10.0.0.5` to the setup above, by editing `server.bindto` in
-> `config.yaml`, or at launch time with
-> `--override server.bindto=10.0.0.5:8012`. The address in use is printed at
-> startup as `Listening at ...`.
+> `127.0.0.1` only accepts connections from the machine running the server. On a
+> remote host pass `--host <its-address>` above, or launch with
+> `--override server.bindto=<its-address>:8012`.
 
 ### Login credentials
 
@@ -94,26 +91,19 @@ it.
 
 ### Choosing how much data to process
 
-Say how much data you want in one of two ways. `--max-clips` and `--chunks` are
-mutually exclusive; passing both is an error.
+`--max-clips` and `--chunks` are mutually exclusive; passing both is an error.
 
 ```
---max-clips N       Process exactly N clips. Consecutive chunks are downloaded
-                    from 0 until N clips are on disk, so N means N regardless
-                    of how many clips a chunk happens to hold.
---chunks SPEC       Process these chunks in full, however many clips they hold.
-                    Comma-separated indices and/or ranges: "0", "0,1,2",
-                    "0-3,7". Use this when you want specific chunks rather than
-                    a clip count. Default when neither flag is given: chunk 0.
+--max-clips N       Process exactly N clips, downloading chunks from 0 until N
+                    are on disk.
+--chunks SPEC       Process these chunks in full: "0", "0,1,2", "0-3,7".
+                    Default when neither flag is given: chunk 0.
 --camera CAM        One of the seven cameras (default camera_front_wide_120fov).
-                    One camera per run; the forward-wide camera is the closest
-                    analogue to nuScenes' CAM_FRONT.
 --hf-cache-dir DIR  Where the raw chunk zips are cached (defaults to $HF_HOME).
 ```
 
-Either way the download granularity is a whole chunk, ~2 GiB holding ~100 clips,
-because zip members cannot be fetched individually. So `--max-clips 500` pulls
-five chunks and then processes 500 of the ~500 clips they contain.
+Downloads are whole chunks, ~2 GiB for ~100 clips, so `--max-clips 500` pulls
+about five.
 
 ### Useful flags
 
@@ -129,6 +119,7 @@ python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_a
   --caption-embed-model MODEL      SentenceTransformer for caption embeddings
   --skip-prepare / --skip-cosmos / --skip-captions
   --skip-caption-embeddings / --skip-visual-embeddings / --skip-trajectory
+  --skip-bev                       skip building the BEV viewer data
 ```
 
 Every stage is independently re-runnable; use the `--skip-*` flags to resume
@@ -151,6 +142,8 @@ setup_physical_ai.py
 ├── download_egomotion             egomotion.offline + camera frame timestamps → egomotion/
 │   └── run_extract_trajectories   scripts/extract_trajectory_stats.py (resamples ego→frame times)
 │       └── build_trajectory_memmap_and_index  memmap + FAISS (full / 10s / 5s, Flat)
+├── download_obstacles             obstacle.offline + vehicle_dimensions → obstacles/
+│   └── run_build_bev              scripts/build_bev_data.py → bev_data/, bev_index/
 ├── fetch_clip_countries           metadata/data_collection.parquet → ISO alpha-2 codes
 ├── init_annotations_db            clips (incl. country), video_paths, datasets
 ├── init_users_db                  single admin user
@@ -169,9 +162,8 @@ setup_physical_ai.py
 | Trajectory pattern (`hard_braking`, `stop_go`, …) | `egomotion.offline` | `TrajectoryStore` |
 | Trajectory shape (clip→clip) | `egomotion.offline` | `TrajectoryStore` |
 | Country / driving-side filter | `metadata/data_collection.parquet` | `SQLiteDataStore` (`clips.country`) |
+| BEV viewer (ego + tracked objects) | `labels/obstacle.offline` + `egomotion.offline` | `BEVFetcher` (`bev_data/`) |
 | HTTP-range video streaming | local files | `LocalFileFetcher` |
-
-The script also creates a single admin user so you can log into the UI.
 
 ### On-disk layout
 
@@ -186,6 +178,9 @@ wheel-data-physical-ai/
 ├── visual_embeddings/                   pkl shards + FAISS index
 ├── egomotion/<clip_id>.egomotion.offline.parquet   ego x/y/z @ ~10 Hz
 │   └── <clip_id>.timestamps.parquet                camera frame times @ ~30 Hz
+├── obstacles/<clip_id>.obstacle.offline.parquet    3D boxes, rig frame
+├── bev_data/<clip_id>.msgpack                      BEV frames served by BEVFetcher
+├── bev_index/clips_with_bev_set.pkl                backs the "With BEV" filter
 ├── trajectory_data/
 │   ├── shards/trajectory_data_downsampled_d5_0.safetensors
 │   ├── trajectory_data.dat              memmap (all rows concatenated)
@@ -200,17 +195,15 @@ wheel-data-physical-ai/
 └── config.yaml                          read by scripts/launch_server.py
 ```
 
-The raw ~2 GiB chunk zips live in your HuggingFace cache (`--hf-cache-dir` /
-`$HF_HOME`), not under the workdir.
-
 ## What is intentionally not built
 
 * Perception-based search (object class / count / proximity / direction): only
   an empty `wm_stats.parquet` stub is written.
-* BEV viewer / metrics filter (no `predictions/` data populated).
+* Model metrics and the leaderboard (no `predictions/` data populated).
+* Lane markings and road boundaries in the BEV viewer: the official dataset
+  release ships no map geometry, so the BEV shows the ego vehicle and tracked
+  objects on a blank ground plane.
 * Arena evaluation mode.
-* Classifier and cluster search (`classifiers/` and `clustering/` remain empty;
-  the search is lazy and just returns nothing).
 
 ## Troubleshooting
 
@@ -227,6 +220,3 @@ The raw ~2 GiB chunk zips live in your HuggingFace cache (`--hf-cache-dir` /
 * **vLLM OOM on a 24 GiB GPU.** Lower `--gpu-memory-utilization` (default 0.7)
   or `--max-model-len` (default 32768).
 * **"Address already in use".** Port 8012 is busy; pass `--port 18012`.
-* **Re-running.** Every step is idempotent. Mix `--skip-prepare`,
-  `--skip-cosmos`, `--skip-captions`, `--skip-caption-embeddings`,
-  `--skip-visual-embeddings`, `--skip-trajectory` to resume from any stage.

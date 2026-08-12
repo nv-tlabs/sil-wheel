@@ -1911,15 +1911,6 @@ function renderFilters() {
         withBEVEl.checked = false;
         window.currentWithBEV = null;
     }
-    const hint = document.getElementById("metrics-bev-availability-hint");
-    if (hint) {
-        // The hint is meant for operators who set up one of the two indexes
-        // and forgot the other (asymmetric availability). When both are
-        // unavailable the deployment intentionally doesn't use these
-        // features and the hint is noise.
-        const partialAvailability = metricsAvailable !== bevAvailable;
-        hint.style.display = partialAvailability ? "block" : "none";
-    }
     document.getElementById("without-ann").checked = window.currentWithoutAnn === true;
     document.getElementById("left-hand-driving").checked = window.currentLeftHandDriving === true;
     document.getElementById("with-ego-data").checked = window.currentWithEgoData === true;

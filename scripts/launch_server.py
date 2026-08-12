@@ -431,14 +431,18 @@ class VideoFetcher(BaseFetcher):
 class BEVFetcher(BaseFetcher):
     """Resolves and serves per-clip BEV msgpack data from S3.
 
-    BEV files are addressed by clip ID using the fixed
-    ``bev_data/v0/{clip_id}.msgpack`` key layout. Optionally, this fetcher can
-    load a precomputed set of clip IDs with BEV data and use it as a search
-    filter so queries can be restricted to clips with available BEV outputs.
+    BEV files are addressed by clip ID as ``{prefix}/{clip_id}.msgpack``. As with
+    video paths, an absolute ``prefix`` is served from local disk and a relative
+    one is treated as an S3 key, so a locally built BEV directory needs no
+    special casing here. Optionally, this fetcher can load a precomputed set of
+    clip IDs with BEV data and use it as a search filter so queries can be
+    restricted to clips with available BEV outputs.
     """
 
-    def __init__(self, bucket, index_dir: str | None = None, endpoint: str | None = None, profile: str = "sil-wheel"):
+    def __init__(self, bucket, index_dir: str | None = None, endpoint: str | None = None,
+                 profile: str = "sil-wheel", prefix: str = "bev_data/v0"):
         super().__init__(bucket, endpoint, profile)
+        self.prefix = str(prefix).rstrip("/")
         self.clips_with_bev = None
         if index_dir is not None:
             index_path = Path(index_dir) / "clips_with_bev_set.pkl"
@@ -450,7 +454,7 @@ class BEVFetcher(BaseFetcher):
 
     def get_key(self, handler, clip_id):
         return (
-            f"bev_data/v0/{clip_id}.msgpack",
+            f"{self.prefix}/{clip_id}.msgpack",
             {"Content-Type": "application/octet-stream", "Content-Encoding": "msgpack"},
         )
 
@@ -3023,6 +3027,7 @@ def main(argv=None):
             index_dir=bev_cfg["metrics_index_dir"],
             endpoint=s3_endpoint,
             profile=s3_profile,
+            prefix=bev_cfg.get("prefix", "bev_data/v0"),
         )
     else:
         bev_fetcher = None

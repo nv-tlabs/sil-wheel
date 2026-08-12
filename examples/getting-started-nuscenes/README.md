@@ -51,12 +51,9 @@ python scripts/launch_server.py wheel-data/config.yaml
 Open <http://127.0.0.1:8012/> and log in.
 
 > [!NOTE]
-> `127.0.0.1` only accepts connections from the machine running the server. When
-> setting this up on a remote host, point it at that host's address instead, by
-> passing `--host 10.0.0.5` to the setup above, by editing `server.bindto` in
-> `config.yaml`, or at launch time with
-> `--override server.bindto=10.0.0.5:8012`. The address in use is printed at
-> startup as `Listening at ...`.
+> `127.0.0.1` only accepts connections from the machine running the server. On a
+> remote host pass `--host <its-address>` above, or launch with
+> `--override server.bindto=<its-address>:8012`.
 
 ### Login credentials
 
@@ -137,11 +134,6 @@ setup_nuscenes.py
 
 ## What you get after setup
 
-Once the script finishes you have a SIL-Wheel instance with every retrieval
-modality populated, alongside all the on-disk artifacts the server reads.
-
-### Search modalities in the UI
-
 | Modality | Source | SIL-Wheel store |
 | --- | --- | --- |
 | Caption full-text search | Qwen3-VL-4B captions | `FTSCaptionStore` |
@@ -152,8 +144,6 @@ modality populated, alongside all the on-disk artifacts the server reads.
 | Trajectory shape (clip→clip) | nuScenes ego_pose | `TrajectoryStore` |
 | Country / data-source filters | metadata in `annotations.db` | `SQLiteDataStore` |
 | HTTP-range video streaming | local files | `LocalFileFetcher` |
-
-The script also creates a single admin user so you can log into the UI.
 
 ### On-disk layout
 
@@ -182,18 +172,12 @@ wheel-data/
 └── config.yaml                          read by scripts/launch_server.py
 ```
 
-`classifiers/`, `clustering/`, and `bev_index/` are referenced from
-`config.yaml` but not populated; their stores are lazy and don't require the
-directories to exist.
-
 ## What is intentionally not built
 
 * Perception-based search (object class / count / proximity / direction):
   only an empty `wm_stats.parquet` stub is written, so it returns nothing.
 * BEV viewer / metrics filter (no `predictions/` data populated).
 * Arena evaluation mode.
-* Classifier and cluster search (`classifiers/` and `clustering/` directories
-  remain empty; the search is lazy and just returns nothing).
 
 ## Troubleshooting
 
@@ -204,14 +188,8 @@ directories to exist.
 * **Download fails partway.** The script writes to a `.part` file and
   resumes from where it left off on the next run.
 * **vLLM OOM on a 24 GiB GPU.** Lower `--gpu-memory-utilization` (default
-  0.7) or `--max-model-len` (default 32768). The default is already tuned
-  to not OOM a 4090 alongside ~2 GB held by another process.
+  0.7) or `--max-model-len` (default 32768).
 * **HuggingFace download stalls.** First launch pulls Cosmos / Qwen3-VL /
   Qwen3-Embedding / Florence2 / SigCLIP2 weights. Ensure `huggingface_hub`
   can reach the hub (proxy / token).
-* **"Address already in use".** Port 8012 is busy; pass `--port 18012` so
-  the generated config binds elsewhere.
-* **Re-running.** Every step is idempotent. Mix `--skip-download`,
-  `--skip-encode`, `--skip-prepare`, `--skip-cosmos`, `--skip-captions`,
-  `--skip-caption-embeddings`, `--skip-visual-embeddings`,
-  `--skip-trajectory` to resume from any stage.
+* **"Address already in use".** Port 8012 is busy; pass `--port 18012`.

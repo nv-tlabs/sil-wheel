@@ -183,20 +183,8 @@ the YAML configuration.
 
 > [!NOTE]
 > The examples bind to `127.0.0.1:8012`, which only accepts connections from the
-> machine running the server. To reach it from anywhere else, point `bindto` at
-> the address of the host you are launching from, in any of these ways:
->
-> ```bash
-> # at data preparation time, baked into config.yaml
-> python examples/.../setup_physical_ai.py --host 10.0.0.5
->
-> # at launch time, without touching config.yaml
-> python scripts/launch_server.py wheel-data-physical-ai/config.yaml \
->     --override server.bindto=10.0.0.5:8012
-> ```
->
-> Or edit `server.bindto` in `config.yaml` directly. The address in use is
-> printed at startup as `Listening at ...`.
+> machine running the server. On a remote host pass `--host <its-address>` to the
+> setup, or launch with `--override server.bindto=<its-address>:8012`.
 
 ## Python API
 
