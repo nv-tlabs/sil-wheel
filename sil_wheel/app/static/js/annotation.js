@@ -2627,6 +2627,7 @@ function autolabelSearch(action) {
             console.log("Failed to perform classifier action on server!");
             return;
         }
+        selectWrittenProject(projectToWrite);
         search();
         checkClassifierState();
     });
@@ -2741,6 +2742,7 @@ function applyMassLabel() {
                     feedback.textContent = `❌ Server responded with ${req.status}`;
                     return;
                 }
+                selectWrittenProject(projectToWrite);
                 search();
                 hideLoading();
                 // Show success directly under the button
@@ -2915,6 +2917,7 @@ function uploadAnnotations() {
                     hideLoading();
                     return;
                 }
+                selectWrittenProject(projectToWrite);
                 search();
                 hideLoading();
                 if (feedback) {

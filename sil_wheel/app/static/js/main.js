@@ -2814,6 +2814,32 @@ function logMissingProjectToWrite(context) {
     if (input) input.focus();
 }
 
+// Add `project` to the project selection after annotations were written to it.
+// Call before re-running the search that is meant to display them: the first
+// write to a project happens while that project is not yet an option (the list
+// is rebuilt from each search response), so the follow-up search would filter
+// the new annotations out and they would look like they were never saved.
+function selectWrittenProject(project) {
+    if (!project) return;
+    const select = document.getElementById("project-select");
+    if (!select) return;
+
+    if (!Array.from(select.options).some(o => o.value === project)) {
+        select.add(new Option(project, project));
+    }
+    const selected = Array.from(select.selectedOptions)
+        .map(o => o.value)
+        .filter(v => v !== "");
+    if (!selected.includes(project)) selected.push(project);
+
+    // addProjectSourceOptions() rebuilds the list on the next search response
+    // and restores the selection from this, so it has to be updated too.
+    window.currentProjectSource = selected;
+    // change.select2 refreshes the widget without firing the app's change
+    // handler, which would race the explicit search() that follows.
+    $(select).val(selected).trigger("change.select2");
+}
+
 function closeCaptionBoxes() {
     document.querySelectorAll('.caption-box').forEach(box => {
         box.style.display = 'none';

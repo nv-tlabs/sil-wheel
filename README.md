@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/wheel_ui_demo.gif" width="800" alt="SIL-Wheel UI walkthrough" />
+  <img src="docs/assets/wheel_ui_demo.gif" width="800" alt="SIL-Wheel walkthrough: trajectory search, caption search, and the leaderboard" />
 </p>
 
 SIL-Wheel is a framework for building searchable, curated video datasets for
@@ -166,6 +166,10 @@ python examples/getting-started-physical-ai-autonomous-vehicles/setup_physical_a
     --max-clips 500
 python scripts/launch_server.py wheel-data-physical-ai/config.yaml
 ```
+
+<p align="center">
+  <img src="docs/assets/physical_ai_demo.gif" width="800" alt="Physical AI walkthrough: running the setup, then searching the resulting corpus" />
+</p>
 
 See the [nuScenes](examples/getting-started-nuscenes/README.md) and
 [Physical AI](examples/getting-started-physical-ai-autonomous-vehicles/README.md)
