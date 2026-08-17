@@ -54,7 +54,31 @@ _AV_STOPWORDS = {
     "behavior", "ensuring", "ensure", "ensures",
     "control", "controlled", "controls", "scenario", "situation",
     "conditions", "condition", "task", "structure", "context",
-    "reasoning", "none", "type", 
+    "reasoning", "none", "type",
+    # Vehicle makes / brand emblems: caption-verbosity noise, not scene content.
+    "mercedes", "benz", "bmw", "audi", "toyota", "honda", "ford", "chevrolet",
+    "chevy", "nissan", "hyundai", "kia", "tesla", "jeep", "volkswagen", "vw",
+    "subaru", "lexus", "mazda", "dodge", "ram", "gmc", "buick", "cadillac",
+    "volvo", "porsche", "ferrari", "lamborghini", "bentley", "jaguar", "acura",
+    "infiniti", "chrysler", "mitsubishi", "peugeot", "renault", "fiat",
+    "logo", "emblem", "badge", "indicated", "brand",
+    # caption-verb scaffolding that forms noise n-grams
+    "shows", "show", "depicts", "depict", "showing", "depicting",
+    "showcasing", "showcase", "featuring", "captures", "capturing", "captured",
+    # Cosmos-Reason caption-template hedging / boilerplate
+    "seconds", "second", "action", "actions", "suggesting", "suggests",
+    "suggest", "appears", "appear", "indicating", "indicates", "reason",
+    "reasons", "depicting", "ego",
+    # qwen3.5 caption viewpoint / narration boilerplate
+    "perspective", "dashcam", "person", "first", "footage", "viewpoint",
+    "travels", "forward", "scene", "video", "captures",
+}
+
+# Bare number words are noise on their own ("two") but meaningful inside an
+# n-gram ("two lane"), so they are dropped only as a WHOLE term, not per-token.
+_NUMBER_WORDS = {
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+    "nine", "ten", "several", "multiple",
 }
 
 
@@ -277,6 +301,8 @@ def _build_topics(cluster_clip_ids, clip_to_caption, keywords_top_k=15):
             if score[j] <= 0:
                 break
             term = feature_names[j]
+            if term in _NUMBER_WORDS:
+                continue
             if any(part in _AV_STOPWORDS for part in term.split()):
                 continue
             canon = _canonical_key(term)

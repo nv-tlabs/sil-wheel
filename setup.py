@@ -107,6 +107,16 @@ def get_extras_require():
             "faiss-cpu",
             "vllm",
         ],
+        "embedding-quality": [
+            "faiss-cpu",
+            "scikit-learn",
+        ],
+        # Large-scale clustering, taxonomy, and figures for the embedding-space
+        # analysis. Same heavy deps as embedding-quality.
+        "embedding-clustering": [
+            "faiss-cpu",
+            "scikit-learn",
+        ],
         # Reference-based caption-quality metrics (nlg + bertscore). Kept
         # optional so the core package installs without the scoring stack.
         "caption-quality": [
@@ -115,7 +125,7 @@ def get_extras_require():
             "rouge-score",
             "bert-score",
         ],
-        # EVQAScore only. Pulls Ultralytics YOLO11 (AGPL-3.0), isolated here
+        # EVQAScore only. Pulls Ultralytics YOLO11 (AGPL-3.0) -- isolated here
         # so it is never a transitive dependency of anything else.
         "evqa": [
             "ultralytics",
